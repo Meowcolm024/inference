@@ -1,0 +1,8 @@
+\begin{inference-notation}
+notation:20 "if" c:0 "then" t:0 => c t
+notation:20 "if" c:0 "then" t:0 "else" f:0 => c t f
+\end{inference-notation}
+\begin{inference}
+────
+if a then if b then c else d
+\end{inference}

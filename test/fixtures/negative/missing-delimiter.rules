@@ -1,0 +1,7 @@
+\begin{inference-notation}
+notation:20 "if" c:0 "then" t:0 "else" f:20 => c t f
+\end{inference-notation}
+\begin{inference}
+────
+if 𝛤 then f x
+\end{inference}

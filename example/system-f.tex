@@ -1,0 +1,149 @@
+\documentclass{article}
+\usepackage{mathpartir}
+
+\begin{document}
+
+\begin{inference-notation}
+infixr:60 " → " => "\to"
+infixr:65 " × " => "\times"
+infix:55  " : " => ":"
+infix:53  " ∉ " => "\notin"
+infixl:52 " , " => ","
+notation:53 X:atom "∈" Δ:51 => X " \in " Δ
+notation:53 x:atom ":" A:54 "∈" Γ:51 => x " : " A " \in " Γ
+notation:50 Δ:51 ";" Γ:51 "⊢" e:51 ":" A:51 => Δ "\,;\," Γ " \vdash " e " : " A
+notation:50 Δ:51 "⊢" A:51 "type" => Δ " \vdash " A "\;\mathsf{type}"
+notation:50 Δ:51 "⊢" e:51 "term" => Δ " \vdash " e "\;\mathsf{term}"
+notation:50 Δ:51 "⊢" Γ:51 "ctx" => Δ " \vdash " Γ "\;\mathsf{ctx}"
+notation:10 Δ:11 "tyctx" => Δ "\;\mathsf{tyctx}"
+notation:56 "∀" X:atom "." A:56 => "\forall " X ".\," A
+notation:56 "λ" x:atom ":" A:0 "." e:56 => "\lambda " x " : " A ".\," e
+notation:56 "Λ" X:atom "." e:56 => "\Lambda " X ".\," e
+notation:85 e:85 "[" A:0 "]" => e "[" A "]"
+notation:85 B:85 "[" A:0 "/" X:atom "]" => B "[" A "/" X "]"
+notation:80 "⟨" e:0 "," f:0 "⟩" => "\langle " e ", " f " \rangle"
+notation:75 "fst" e:76 => "\mathsf{fst}\," e
+notation:75 "snd" e:76 => "\mathsf{snd}\," e
+\end{inference-notation}
+
+\begin{inference}[rule_set=System F type and context formation]
+──────────────────────────── S-TyCtxEmpty
+∅ tyctx
+
+Δ tyctx
+X ∉ Δ
+──────────────────────────── S-TyCtxExtend
+Δ, X tyctx
+
+Δ tyctx
+X ∈ Δ
+──────────────────────────── S-TyVar
+Δ ⊢ X type
+
+Δ ⊢ A type
+Δ ⊢ B type
+──────────────────────────── S-Arrow
+Δ ⊢ A → B type
+
+Δ ⊢ A type
+Δ ⊢ B type
+──────────────────────────── S-Product
+Δ ⊢ A × B type
+
+X ∉ Δ
+Δ, X ⊢ A type
+──────────────────────────── S-Forall
+Δ ⊢ ∀ X . A type
+
+Δ tyctx
+──────────────────────────── S-CtxEmpty
+Δ ⊢ ∅ ctx
+
+Δ ⊢ Γ ctx
+Δ ⊢ A type
+x ∉ dom Γ
+──────────────────────────── S-CtxExtend
+Δ ⊢ Γ, x : A ctx
+\end{inference}
+
+\begin{inference}[rule_set=System F term formation]
+Δ tyctx
+──────────────────────────── S-Var
+Δ ⊢ x term
+
+Δ ⊢ A type
+Δ ⊢ e term
+──────────────────────────── S-Abs
+Δ ⊢ λ x : A . e term
+
+Δ ⊢ e₁ term
+Δ ⊢ e₂ term
+──────────────────────────── S-App
+Δ ⊢ e₁ e₂ term
+
+X ∉ Δ
+Δ, X ⊢ e term
+──────────────────────────── S-TyAbs
+Δ ⊢ Λ X . e term
+
+Δ ⊢ e term
+Δ ⊢ A type
+──────────────────────────── S-TyApp
+Δ ⊢ e [ A ] term
+
+Δ ⊢ e₁ term
+Δ ⊢ e₂ term
+──────────────────────────── S-Pair
+Δ ⊢ ⟨ e₁ , e₂ ⟩ term
+
+Δ ⊢ e term
+──────────────────────────── S-Fst
+Δ ⊢ fst e term
+
+Δ ⊢ e term
+──────────────────────────── S-Snd
+Δ ⊢ snd e term
+\end{inference}
+
+\begin{inference}[rule_set=System F typing]
+Δ ⊢ Γ ctx
+x : A ∈ Γ
+──────────────────────────── T-Var
+Δ ; Γ ⊢ x : A
+
+x ∉ dom Γ
+Δ ; Γ, x : A ⊢ e : B
+──────────────────────────── T-Abs
+Δ ; Γ ⊢ λ x : A . e : A → B
+
+Δ ; Γ ⊢ e₁ : A → B
+Δ ; Γ ⊢ e₂ : A
+──────────────────────────── T-App
+Δ ; Γ ⊢ e₁ e₂ : B
+
+Δ ⊢ Γ ctx
+X ∉ Δ
+Δ, X ; Γ ⊢ e : B
+──────────────────────────── T-TyAbs
+Δ ; Γ ⊢ Λ X . e : ∀ X . B
+
+Δ ; Γ ⊢ e : ∀ X . B
+Δ ⊢ A type
+──────────────────────────── T-TyApp
+Δ ; Γ ⊢ e [ A ] : B [ A / X ]
+
+Δ ; Γ ⊢ e₁ : A
+Δ ; Γ ⊢ e₂ : B
+──────────────────────────── T-Pair
+Δ ; Γ ⊢ ⟨ e₁ , e₂ ⟩ : A × B
+
+Δ ; Γ ⊢ e : A × B
+──────────────────────────── T-Fst
+Δ ; Γ ⊢ fst e : A
+
+Δ ; Γ ⊢ e : A × B
+──────────────────────────── T-Snd
+Δ ; Γ ⊢ snd e : B
+\end{inference}
+
+\end{document}

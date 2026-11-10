@@ -1,0 +1,87 @@
+# inference
+
+`inference` is a Haskell library and CLI that turn Unicode inference rules into LaTeX `mathpar` fragments. The parser produces a source-spanned AST and supports user-defined mixfix notation, infix associativity, per-hole precedence, and left-associative application by juxtaposition. Identifiers can include subscripts and superscripts such as `Γᵢ` and `eⁿ⁺¹`.
+
+## Input
+
+Formation, typing, and reduction rules share the same format. Write one premise per line, a separator made of `─` characters with an optional label, and one conclusion. An axiom starts with the separator. Separate rule blocks with a blank line.
+
+Put rule sets in `inference` environments and declarations in `inference-notation` environments. Each delimiter takes its own line. Set `rule_set` on an opening delimiter to put the rules in a captioned figure. Untitled rule sets render as bare `mathpar` groups. Notation declarations apply throughout the file.
+
+```text
+\begin{inference-notation}
+infixr:60 " → " => "\to"
+notation:50 Γ:51 "⊢" e:51 ":" A:51 => Γ " \vdash " e " : " A
+\end{inference-notation}
+
+\begin{inference}[rule_set=Typing]
+Γ ⊢ e₁ : A → B
+Γ ⊢ e₂ : A
+──────────────────── T-App
+Γ ⊢ e₁ e₂ : B
+\end{inference}
+```
+
+## Run the CLI
+
+By default, `inference` runs as a Pandoc JSON filter. Use Pandoc Markdown or Org as the input format and `latex` as the output format.
+
+```sh
+stack build
+stack exec pandoc -- --from=markdown --to=latex --filter=inference example/stlc.md -o notes.tex
+```
+
+For Org documents, use `--from=org` with `#+BEGIN_SRC inference` blocks. Both formats support a `rule_set` caption and separate `inference-notation` blocks. Notation applies throughout the document, including to earlier rule blocks. Other output formats pass through unchanged. The [filter design](docs/DESIGN.md#4-pandoc-json-filter) shows both block syntaxes.
+
+Use `--source` to rewrite inference environments in a LaTeX fragment or document.
+
+```sh
+stack exec inference -- --source < example/stlc.tex > stlc-processed.tex
+pdflatex stlc-processed.tex
+```
+
+In source mode, the CLI reads UTF-8 from stdin and writes LaTeX to stdout. It preserves surrounding LaTeX and turns declaration lines into comments. Both modes report errors on stderr and exit with a nonzero status. Run `stack exec inference -- --help` for usage.
+
+Each `.tex` example is a complete LaTeX document that loads `mathpartir`. You can pass the processed output directly to a LaTeX engine. When using source mode on a fragment, load `mathpartir` in the document that includes it.
+
+```latex
+\documentclass{article}
+\usepackage{mathpartir}
+\begin{document}
+\input{fragment.tex}
+\end{document}
+```
+
+The renderer translates common Greek letters, math symbols, and scripts to LaTeX. Other Unicode characters pass through and require support from the document's TeX engine and fonts. Notation templates contain literal LaTeX and can use commands from packages loaded by the document.
+
+## Use the library
+
+`Inference.LaTeX.compileSource` rewrites a LaTeX `Text` input directly. Use `Inference.Parser.parseSource` to inspect its parsed chunks.
+
+From the repository root, run `stack repl inference:lib` and enter these commands.
+
+```haskell
+import qualified Data.Text.IO as Text
+import Inference.LaTeX (compileSource)
+import Inference.Parser (formatDiagnostic)
+source <- Text.readFile "example/stlc.tex"
+either (Text.putStr . formatDiagnostic source) Text.putStr (compileSource source)
+```
+
+On invalid input, `formatDiagnostic` explains the error and highlights its location. For an ambiguous expression, it also highlights the competing declarations.
+
+## Tests
+
+Run `stack test` for parser and LaTeX golden tests.
+
+## Examples
+
+- Untyped lambda calculus with capture-avoiding substitution and full β-reduction. [LaTeX source](example/untyped-lambda.tex)
+- Simply typed lambda calculus. [Markdown tutorial](example/stlc.md) · [LaTeX source](example/stlc.tex)
+- Explicit System F with products. [LaTeX source](example/system-f.tex)
+
+## Roadmap
+
+Planned work includes BNF-like syntax shorthand and a Unicode printer.
+
+See the [design](docs/DESIGN.md) for the input grammar and the [implementation plan](docs/IMPLEMENTATION-PLAN.md) for the remaining stages.

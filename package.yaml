@@ -1,0 +1,105 @@
+name:                inference
+version:             0.1.0.0
+github:              "Meowcolm024/inference"
+license:             BSD-3-Clause
+author:              "Meowcolm024"
+copyright:           "2026 Meowcolm024"
+
+extra-source-files:
+- README.md
+- CHANGELOG.md
+- example/*.md
+- example/*.tex
+- test/fixtures/positive/*.rules
+- test/fixtures/negative/*.rules
+- test/fixtures/latex/*.rules
+- test/fixtures/latex/*.tex
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/githubuser/inference#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+
+ghc-options:
+  - -Wall
+  - -Wcompat
+  - -Widentities
+  - -Wincomplete-record-updates
+  - -Wincomplete-uni-patterns
+  - -Wmissing-home-modules
+  - -Wpartial-fields
+  - -Wredundant-constraints
+  - -Wunused-imports
+  - -fprint-explicit-foralls
+  - -fprint-explicit-kinds
+
+default-extensions:
+  - DataKinds
+  - DerivingVia
+  - GADTs
+  - LambdaCase
+  - MultiWayIf
+  - NoStarIsType
+  - OverloadedStrings
+  - StrictData
+  - TypeFamilies
+  - ViewPatterns
+
+language: GHC2021
+
+library:
+  source-dirs: src
+  exposed-modules:
+  - Inference.AST
+  - Inference.LaTeX
+  - Inference.Parser
+  other-modules:
+  - Inference.Parser.Environment
+  - Inference.Parser.Expression
+  - Inference.Parser.Notation
+  - Inference.Parser.Source
+  dependencies:
+  - containers
+  - megaparsec
+  - text
+
+executables:
+  inference:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - inference
+    - bytestring
+    - containers
+    - optparse-applicative
+    - pandoc-types
+    - text
+    - transformers
+
+tests:
+  inference-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - inference
+    - bytestring
+    - tasty
+    - tasty-golden
+    - tasty-hunit
+    - tasty-quickcheck
+    - text

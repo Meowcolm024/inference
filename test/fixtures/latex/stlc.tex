@@ -1,0 +1,74 @@
+\documentclass{article}
+\usepackage{mathpartir}
+
+\begin{document}
+
+% infixr:60 " → " => "\to"
+% infix:55  " : " => ":"
+% notation:53 x:atom ":" A:54 "∈" Γ:51 => x " : " A " \in " Γ
+% infix:53  " ∉ " => "\notin"
+% infixl:52 " , " => ","
+% notation:50 Γ:51 "⊢" e:51 ":" A:51 => Γ " \vdash " e " : " A
+% notation:56 "λ" x:atom ":" A:0 "." e:56 => "\lambda " x " : " A ".\," e
+% notation:10 A:11 "type" => A "\;\mathsf{type}"
+% notation:10 e:11 "term" => e "\;\mathsf{term}"
+% notation:10 Γ:11 "ctx" => Γ "\;\mathsf{ctx}"
+
+\begin{figure}
+\begin{mathpar}
+\inferrule*[right={S-Base}]
+  { }
+  {\iota\;\mathsf{type}}
+
+\inferrule*[right={S-Arrow}]
+  {A\;\mathsf{type} \\
+   B\;\mathsf{type}}
+  {A\to B\;\mathsf{type}}
+
+\inferrule*[right={S-Var}]
+  { }
+  {x\;\mathsf{term}}
+
+\inferrule*[right={S-Abs}]
+  {A\;\mathsf{type} \\
+   e\;\mathsf{term}}
+  {\lambda x : A.\,e\;\mathsf{term}}
+
+\inferrule*[right={S-App}]
+  {e_{1}\;\mathsf{term} \\
+   e_{2}\;\mathsf{term}}
+  {e_{1}\,e_{2}\;\mathsf{term}}
+
+\inferrule*[right={S-Empty}]
+  { }
+  {\emptyset\;\mathsf{ctx}}
+
+\inferrule*[right={S-Extend}]
+  {\Gamma\;\mathsf{ctx} \\
+   A\;\mathsf{type} \\
+   x\notin dom\,\Gamma}
+  {\Gamma,x:A\;\mathsf{ctx}}
+\end{mathpar}
+\caption{STLC syntax}
+\end{figure}
+
+\begin{figure}
+\begin{mathpar}
+\inferrule*[right={T-Var}]
+  {x : A \in \Gamma}
+  {\Gamma \vdash x : A}
+
+\inferrule*[right={T-Abs}]
+  {x\notin dom\,\Gamma \\
+   \Gamma,x:A \vdash e : B}
+  {\Gamma \vdash \lambda x : A.\,e : A\to B}
+
+\inferrule*[right={T-App}]
+  {\Gamma \vdash e_{1} : A\to B \\
+   \Gamma \vdash e_{2} : A}
+  {\Gamma \vdash e_{1}\,e_{2} : B}
+\end{mathpar}
+\caption{STLC typing}
+\end{figure}
+
+\end{document}

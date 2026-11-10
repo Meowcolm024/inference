@@ -1,0 +1,7 @@
+\begin{inference-notation}
+notation:20 "if" c:0 "then" t:0 "else" f:20 => "\mathbf{if}\;" c "\;\mathbf{then}\;" t "\;\mathbf{else}\;" f
+\end{inference-notation}
+\begin{inference}
+── Nested
+if f x then if g y then a else b else c
+\end{inference}

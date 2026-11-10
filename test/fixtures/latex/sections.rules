@@ -1,0 +1,31 @@
+\begin{inference}
+── Before
+A → B
+
+── Also before
+B → C
+\end{inference}
+\begin{inference}[rule_set=Typing #_%& {rules} $\^~<>|]
+── First
+C → D
+
+── Second
+D → E
+\end{inference}
+\begin{inference}[rule_set=Empty]
+\end{inference}
+\begin{inference-notation}
+infixr:60 "→" => "\to"
+\end{inference-notation}
+\begin{inference}
+── Middle
+F → G
+\end{inference}
+\begin{inference}[rule_set=More]
+── Third
+G → H
+\end{inference}
+\begin{inference}
+── After
+H → I
+\end{inference}

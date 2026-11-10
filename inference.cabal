@@ -1,0 +1,139 @@
+cabal-version: 2.2
+
+-- This file has been generated from package.yaml by hpack version 0.39.1.
+--
+-- see: https://github.com/sol/hpack
+
+name:           inference
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/githubuser/inference#readme>
+homepage:       https://github.com/Meowcolm024/inference#readme
+bug-reports:    https://github.com/Meowcolm024/inference/issues
+author:         Meowcolm024
+maintainer:     Meowcolm024
+copyright:      2026 Meowcolm024
+license:        BSD-3-Clause
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    CHANGELOG.md
+    example/stlc.md
+    example/stlc.tex
+    example/system-f.tex
+    example/untyped-lambda.tex
+    test/fixtures/positive/layout.rules
+    test/fixtures/positive/nested-mixfix.rules
+    test/fixtures/positive/scripts.rules
+    test/fixtures/negative/ambiguous-infix.rules
+    test/fixtures/negative/ambiguous-nesting.rules
+    test/fixtures/negative/ambiguous-prefix.rules
+    test/fixtures/negative/invalid-template.rules
+    test/fixtures/negative/invalid-token.rules
+    test/fixtures/negative/malformed-separator.rules
+    test/fixtures/negative/missing-conclusion.rules
+    test/fixtures/negative/missing-delimiter.rules
+    test/fixtures/latex/features.rules
+    test/fixtures/latex/sections.rules
+    test/fixtures/latex/features.tex
+    test/fixtures/latex/sections.tex
+    test/fixtures/latex/stlc.tex
+
+source-repository head
+  type: git
+  location: https://github.com/Meowcolm024/inference
+
+library
+  exposed-modules:
+      Inference.AST
+      Inference.LaTeX
+      Inference.Parser
+  other-modules:
+      Inference.Parser.Environment
+      Inference.Parser.Expression
+      Inference.Parser.Notation
+      Inference.Parser.Source
+  hs-source-dirs:
+      src
+  default-extensions:
+      DataKinds
+      DerivingVia
+      GADTs
+      LambdaCase
+      MultiWayIf
+      NoStarIsType
+      OverloadedStrings
+      StrictData
+      TypeFamilies
+      ViewPatterns
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wunused-imports -fprint-explicit-foralls -fprint-explicit-kinds
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , megaparsec
+    , text
+  default-language: GHC2021
+
+executable inference
+  main-is: Main.hs
+  other-modules:
+      Inference.Pandoc
+      Paths_inference
+  autogen-modules:
+      Paths_inference
+  hs-source-dirs:
+      app
+  default-extensions:
+      DataKinds
+      DerivingVia
+      GADTs
+      LambdaCase
+      MultiWayIf
+      NoStarIsType
+      OverloadedStrings
+      StrictData
+      TypeFamilies
+      ViewPatterns
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wunused-imports -fprint-explicit-foralls -fprint-explicit-kinds -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , bytestring
+    , containers
+    , inference
+    , optparse-applicative
+    , pandoc-types
+    , text
+    , transformers
+  default-language: GHC2021
+
+test-suite inference-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_inference
+  autogen-modules:
+      Paths_inference
+  hs-source-dirs:
+      test
+  default-extensions:
+      DataKinds
+      DerivingVia
+      GADTs
+      LambdaCase
+      MultiWayIf
+      NoStarIsType
+      OverloadedStrings
+      StrictData
+      TypeFamilies
+      ViewPatterns
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wunused-imports -fprint-explicit-foralls -fprint-explicit-kinds -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , bytestring
+    , inference
+    , tasty
+    , tasty-golden
+    , tasty-hunit
+    , tasty-quickcheck
+    , text
+  default-language: GHC2021

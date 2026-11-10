@@ -1,0 +1,8 @@
+\begin{inference-notation}
+infixl:60 "→" => "\to"
+infixr:60 "→" => "\to"
+\end{inference-notation}
+\begin{inference}
+────
+A → B → C
+\end{inference}

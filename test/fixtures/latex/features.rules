@@ -1,0 +1,16 @@
+\begin{inference-notation}
+infixr:60 " → " => "\to"
+notation:55 "flip" first:atom "with" second:atom => second " + " first " + " second
+\end{inference-notation}
+\begin{inference}
+────
+∅
+
+Γᵢ
+αx → βy
+──── Label [x],=#%&_{a}$\^~<>|
+f (e₁₂ → eⁿ⁺¹) x_y
+
+──── T-Scripts
+flip Γ₍ᵢ₊₁₎ with x⁽ᵅ⁻¹⁾
+\end{inference}

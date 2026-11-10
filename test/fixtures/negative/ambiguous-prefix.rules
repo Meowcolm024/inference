@@ -1,0 +1,8 @@
+\begin{inference-notation}
+notation:50 "pick" x:atom => x
+notation:50 "pick" y:51 => y
+\end{inference-notation}
+\begin{inference}
+────
+f (pick x)
+\end{inference}

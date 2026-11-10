@@ -1,0 +1,94 @@
+\documentclass{article}
+\usepackage{mathpartir}
+
+\begin{document}
+
+\begin{inference-notation}
+infix:53 " ∈ " => "\in"
+infix:53 " ∉ " => "\notin"
+infix:53 " ≠ " => "\ne"
+infix:50 " → " => "\mathrel{\to_{\beta}}"
+infix:50 " ↠ " => "\mathrel{\to_{\beta}^{*}}"
+notation:56 "λ" x:atom "." e:56 => "\lambda " x ".\," e
+notation:10 e:11 "term" => e "\;\mathsf{term}"
+notation:75 "FV" e:76 => "\mathrm{FV}\," e
+notation:75 "Vars" e:76 => "\mathrm{Vars}\," e
+notation:50 e:51 "[" s:0 "/" x:atom "]" "=" r:51 => e "[" s "/" x "] = " r
+\end{inference-notation}
+
+\begin{inference}[rule_set=Untyped lambda syntax]
+──────────────────────────── S-Var
+x term
+
+e term
+──────────────────────────── S-Abs
+λ x . e term
+
+e₁ term
+e₂ term
+──────────────────────────── S-App
+e₁ e₂ term
+\end{inference}
+
+\begin{inference}[rule_set=Capture-avoiding substitution]
+──────────────────────────── Subst-VarSame
+x [ s / x ] = s
+
+y ≠ x
+──────────────────────────── Subst-VarOther
+y [ s / x ] = y
+
+e₁ [ s / x ] = r₁
+e₂ [ s / x ] = r₂
+──────────────────────────── Subst-App
+(e₁ e₂) [ s / x ] = r₁ r₂
+
+──────────────────────────── Subst-Shadow
+(λ x . e) [ s / x ] = λ x . e
+
+y ≠ x
+y ∉ FV s
+e [ s / x ] = r
+──────────────────────────── Subst-UnderBinder
+(λ y . e) [ s / x ] = λ y . r
+
+y ≠ x
+y ∈ FV s
+z ∉ Vars (λ y . e)
+z ∉ Vars s
+z ≠ x
+e [ z / y ] = f
+f [ s / x ] = r
+──────────────────────────── Subst-Rename
+(λ y . e) [ s / x ] = λ z . r
+\end{inference}
+
+\begin{inference}[rule_set=Beta reduction]
+e [ s / x ] = r
+──────────────────────────── R-Beta
+(λ x . e) s → r
+
+e → f
+──────────────────────────── R-AppLeft
+e s → f s
+
+e → f
+──────────────────────────── R-AppRight
+s e → s f
+
+e → f
+──────────────────────────── R-UnderBinder
+λ x . e → λ x . f
+\end{inference}
+
+\begin{inference}[rule_set=Multi-step reduction]
+──────────────────────────── R-ManyRefl
+e ↠ e
+
+e → f
+f ↠ g
+──────────────────────────── R-ManyStep
+e ↠ g
+\end{inference}
+
+\end{document}

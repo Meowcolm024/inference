@@ -1,0 +1,8 @@
+snapshot: lts-24.60
+packages:
+- .
+
+# System dependencies here
+nix:
+  enable: true
+  packages: [pandoc]

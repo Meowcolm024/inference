@@ -1,0 +1,10 @@
+\begin{inference}
+── Scripts
+e₀₁₂₃₄₅₆₇₈₉ e⁰¹²³⁴⁵⁶⁷⁸⁹ Γᵢ eⁿ⁺¹ Γ₍ᵢ₊₁₎ x⁽ᵅ⁻¹⁾ y₌ z⁼
+
+── Script keyword
+stepᵢ x
+\end{inference}
+\begin{inference-notation}
+notation:75 "stepᵢ" x:atom => x
+\end{inference-notation}

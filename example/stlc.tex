@@ -1,0 +1,67 @@
+\documentclass{article}
+\usepackage{mathpartir}
+
+\begin{document}
+
+\begin{inference-notation}
+infixr:60 " → " => "\to"
+infix:55  " : " => ":"
+notation:53 x:atom ":" A:54 "∈" Γ:51 => x " : " A " \in " Γ
+infix:53  " ∉ " => "\notin"
+infixl:52 " , " => ","
+notation:50 Γ:51 "⊢" e:51 ":" A:51 => Γ " \vdash " e " : " A
+notation:56 "λ" x:atom ":" A:0 "." e:56 => "\lambda " x " : " A ".\," e
+notation:10 A:11 "type" => A "\;\mathsf{type}"
+notation:10 e:11 "term" => e "\;\mathsf{term}"
+notation:10 Γ:11 "ctx" => Γ "\;\mathsf{ctx}"
+\end{inference-notation}
+
+\begin{inference}[rule_set=STLC syntax]
+──────────────────────────── S-Base
+ι type
+
+A type
+B type
+──────────────────────────── S-Arrow
+A → B type
+
+──────────────────────────── S-Var
+x term
+
+A type
+e term
+──────────────────────────── S-Abs
+λ x : A . e term
+
+e₁ term
+e₂ term
+──────────────────────────── S-App
+e₁ e₂ term
+
+──────────────────────────── S-Empty
+∅ ctx
+
+Γ ctx
+A type
+x ∉ dom Γ
+──────────────────────────── S-Extend
+Γ, x : A ctx
+\end{inference}
+
+\begin{inference}[rule_set=STLC typing]
+x : A ∈ Γ
+──────────────────────────── T-Var
+Γ ⊢ x : A
+
+x ∉ dom Γ
+Γ, x : A ⊢ e : B
+──────────────────────────── T-Abs
+Γ ⊢ λ x : A . e : A → B
+
+Γ ⊢ e₁ : A → B
+Γ ⊢ e₂ : A
+──────────────────────────── T-App
+Γ ⊢ e₁ e₂ : B
+\end{inference}
+
+\end{document}
