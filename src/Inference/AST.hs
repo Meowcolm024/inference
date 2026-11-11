@@ -6,6 +6,16 @@ module Inference.AST
     SourceChunk (..),
     Section (..),
     SectionMarkers (..),
+    BlockKind (..),
+    BlockOptions (..),
+    BlockBody (..),
+    BnfGroup (..),
+    Production (..),
+    ProductionRow (..),
+    EquationRow (..),
+    Equation (..),
+    EquationGuard (..),
+    sectionRules,
     Rule (..),
     Expr (..),
     ExprNode (..),
@@ -55,7 +65,64 @@ data SourceChunk
 data Section = Section
   { sectionTitle :: Maybe Text,
     sectionMarkers :: Maybe SectionMarkers,
-    sectionRules :: [Rule]
+    sectionBody :: BlockBody
+  }
+  deriving (Eq, Show)
+
+data BlockKind = InferenceKind | BnfKind | EquationKind
+  deriving (Eq, Show)
+
+data BlockOptions = BlockOptions
+  { optionsKind :: BlockKind,
+    optionsTitle :: Maybe Text
+  }
+  deriving (Eq, Show)
+
+data BlockBody
+  = InferenceRules [Rule]
+  | BnfGroups [BnfGroup]
+  | Equations [EquationRow]
+  deriving (Eq, Show)
+
+sectionRules :: Section -> [Rule]
+sectionRules section = case sectionBody section of
+  InferenceRules rules -> rules
+  _ -> []
+
+data BnfGroup = BnfGroup
+  { bnfGroupName :: Text,
+    bnfGroupSpan :: SourceSpan,
+    bnfProductions :: [Production]
+  }
+  deriving (Eq, Show)
+
+data Production = Production
+  { productionCategories :: [Expr],
+    productionRows :: [ProductionRow]
+  }
+  deriving (Eq, Show)
+
+data ProductionRow = ProductionRow
+  { productionRowSpan :: SourceSpan,
+    productionRowIndent :: Int,
+    productionAlternatives :: [Expr]
+  }
+  deriving (Eq, Show)
+
+data EquationRow = EquationLine Equation | EquationBlank SourceSpan
+  deriving (Eq, Show)
+
+data Equation = Equation
+  { equationSpan :: SourceSpan,
+    equationLeft :: Expr,
+    equationRight :: Expr,
+    equationGuard :: Maybe EquationGuard
+  }
+  deriving (Eq, Show)
+
+data EquationGuard = EquationGuard
+  { guardHasIf :: Bool,
+    guardExpression :: Expr
   }
   deriving (Eq, Show)
 

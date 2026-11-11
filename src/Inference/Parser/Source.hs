@@ -10,10 +10,13 @@ module Inference.Parser.Source
     identifierStart,
     identifierContinue,
     symbolic,
+    sliceLocated,
+    trimLocated,
+    dashLabel,
   )
 where
 
-import Data.Char (GeneralCategory (DecimalNumber), generalCategory, isLetter, isMark, isPunctuation, isSymbol)
+import Data.Char (GeneralCategory (DecimalNumber), generalCategory, isLetter, isMark, isPunctuation, isSpace, isSymbol)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Inference.AST
@@ -38,6 +41,16 @@ data DiagnosticKind
   | UnexpectedToken
   | AmbiguousExpression
   | InvalidNotationApplication
+  | UnknownBlockKind
+  | UnknownBlockOption
+  | DuplicateBlockOption
+  | MalformedBlockOption
+  | InvalidBnfGroup
+  | InvalidProduction
+  | OrphanContinuation
+  | InvalidEquation
+  | EmptyGuard
+  | ReservedDashLine
   deriving (Eq, Show)
 
 data Diagnostic = Diagnostic
@@ -100,3 +113,22 @@ identifierContinue character =
 
 symbolic :: Char -> Bool
 symbolic character = isSymbol character || isPunctuation character
+
+sliceLocated :: Int -> Int -> Located Text -> Located Text
+sliceLocated offset width (Located source value) =
+  Located (lineSpan (spanStart source) offset width) (Text.take width (Text.drop offset value))
+
+trimLocated :: Located Text -> Located Text
+trimLocated source =
+  let value = locatedValue source
+      trimmedStart = Text.dropWhile isSpace value
+      offset = Text.length value - Text.length trimmedStart
+      trimmed = Text.dropWhileEnd isSpace trimmedStart
+   in sliceLocated offset (Text.length trimmed) source
+
+dashLabel :: Located Text -> Maybe (SourceSpan, Text)
+dashLabel source =
+  let (dashes, rest) = Text.span (== '-') (locatedValue source)
+   in if Text.length dashes >= 3 && (Text.null rest || maybe False (isSpace . fst) (Text.uncons rest))
+        then Just (lineSpan (spanStart (location source)) 0 (Text.length dashes), Text.strip rest)
+        else Nothing

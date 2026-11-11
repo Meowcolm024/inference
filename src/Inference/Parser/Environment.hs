@@ -10,17 +10,18 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Inference.AST
+import Inference.Parser.Options (parseSourceOptions)
 import Inference.Parser.Source
 
 data RawChunk
   = RawLatex Text
   | RawNotation SectionMarkers Text
-  | RawRuleSet SectionMarkers (Maybe Text) Text
+  | RawRuleSet SectionMarkers BlockOptions Text
 
 data Environment = NotationEnvironment | RuleEnvironment
   deriving (Eq)
 
-data Delimiter = Opening Environment Text | Closing Environment Text
+data Delimiter = Opening Environment (Located Text) | Closing Environment Text
 
 scanEnvironments :: Text -> Either Diagnostic [RawChunk]
 scanEnvironments = outside [] . zip [1 ..] . physicalLines
@@ -35,8 +36,8 @@ scanEnvironments = outside [] . zip [1 ..] . physicalLines
           | otherwise ->
               problem UnexpectedSourceEnd source "This closing delimiter has no open inference environment."
         Just (source, Opening environment options) -> do
-          title <- parseOptions environment source options
-          chunks <- inside environment title source [] rest
+          configuration <- parseOptions environment source options
+          chunks <- inside environment configuration source [] rest
           pure (plain latex chunks)
 
     inside environment title begin body ((number, raw) : rest) =
@@ -78,26 +79,23 @@ delimiter number raw =
       (indent, rest) = Text.span horizontalSpace line
       content = Text.dropWhileEnd horizontalSpace rest
       source = lineSpan (SourcePosition number 1) (Text.length indent) (Text.length content)
-      match prefix kind = kind . Text.dropWhile horizontalSpace <$> Text.stripPrefix prefix content
+      match prefix kind = do
+        suffix <- Text.stripPrefix prefix content
+        let value = Text.dropWhile horizontalSpace suffix
+            offset = Text.length content - Text.length value
+        pure (kind (Located (lineSpan (spanStart source) offset (Text.length value)) value))
    in (source,)
         <$> ( match "\\begin{inference-notation}" (Opening NotationEnvironment)
                 <|> match "\\begin{inference}" (Opening RuleEnvironment)
-                <|> match (closing NotationEnvironment) (Closing NotationEnvironment)
-                <|> match (closing RuleEnvironment) (Closing RuleEnvironment)
+                <|> match (closing NotationEnvironment) (Closing NotationEnvironment . locatedValue)
+                <|> match (closing RuleEnvironment) (Closing RuleEnvironment . locatedValue)
             )
 
-parseOptions :: Environment -> SourceSpan -> Text -> Either Diagnostic (Maybe Text)
-parseOptions _ _ "" = Right Nothing
-parseOptions RuleEnvironment source options
-  | Just value <- Text.stripPrefix "[rule_set=" options,
-    (title, "]") <- Text.breakOn "]" value,
-    let trimmed = Text.strip title,
-    not (Text.null trimmed) =
-      Right (Just trimmed)
-  | otherwise =
-      problem MalformedSourceDelimiter source "Expected an optional ‘[rule_set=Title]’ with a nonempty title on the opening line."
-parseOptions NotationEnvironment source _ =
-  problem MalformedSourceDelimiter source "Place ‘\\begin{inference-notation}’ on its own line without options."
+parseOptions :: Environment -> SourceSpan -> Located Text -> Either Diagnostic BlockOptions
+parseOptions RuleEnvironment _ options = parseSourceOptions options
+parseOptions NotationEnvironment source options
+  | Text.null (locatedValue options) = Right (BlockOptions InferenceKind Nothing)
+  | otherwise = problem MalformedSourceDelimiter source "Place ‘\\begin{inference-notation}’ on its own line without options."
 
 horizontalSpace :: Char -> Bool
 horizontalSpace character = isSpace character && character /= '\r'

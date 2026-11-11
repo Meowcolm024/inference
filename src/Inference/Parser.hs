@@ -2,6 +2,8 @@ module Inference.Parser
   ( parseSource,
     parseNotationBlock,
     parseRuleSection,
+    parseBlockSection,
+    parseBlockAttributes,
     formatDiagnostic,
     Diagnostic (..),
     DiagnosticKind (..),
@@ -11,14 +13,17 @@ where
 import Control.Applicative (many)
 import Control.Monad (void)
 import Data.Char (isSpace)
+import Data.Foldable (traverse_)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
 import Inference.AST
+import Inference.Parser.Body (parseBnf, parseEquations)
 import Inference.Parser.Environment (RawChunk (..), scanEnvironments)
 import Inference.Parser.Expression (parseExpression)
 import Inference.Parser.Notation (NotationTable, buildNotationTable, isDeclaration, parseNotation)
+import Inference.Parser.Options (parseBlockAttributes)
 import Inference.Parser.Source
 import Text.Megaparsec (Parsec, bundleErrors, eof, errorOffset, notFollowedBy, runParser, takeWhileP, (<|>))
 import Text.Megaparsec.Char (eol)
@@ -38,9 +43,9 @@ parseSource input = do
     bodyLines markers = sourceLinesAt (sourceLine (spanStart (sectionBeginSpan markers)) + 1)
     parseChunk _ (RawLatex latex) = Right (LatexText latex)
     parseChunk _ (RawNotation markers body) = Right (NotationSource markers body)
-    parseChunk table (RawRuleSet markers title body) = do
-      rules <- bodyLines markers body >>= parseRuleLines table
-      pure (RuleSetSource (Section title (Just markers) rules))
+    parseChunk table (RawRuleSet markers options body) = do
+      parsed <- bodyLines markers body >>= parseBody table (optionsKind options)
+      pure (RuleSetSource (Section (optionsTitle options) (Just markers) parsed))
 
 parseNotationBlock :: Text -> Either Diagnostic [Notation]
 parseNotationBlock input = sourceLines input >>= parseDeclarations . nonblankLines
@@ -53,11 +58,25 @@ parseDeclarations = traverse (uncurry parseNotation) . zip (map NotationId [1 ..
 
 -- The caller supplies the section boundary and the document-wide notation.
 parseRuleSection :: [Notation] -> Maybe Text -> Text -> Either Diagnostic Section
-parseRuleSection notations =
+parseRuleSection notations title = parseBlockSection notations (BlockOptions InferenceKind title)
+
+parseBlockSection :: [Notation] -> BlockOptions -> Text -> Either Diagnostic Section
+parseBlockSection notations options input = do
   let table = buildNotationTable notations
-   in \title input -> do
-        rules <- sourceLines input >>= parseRuleLines table
-        pure (Section title Nothing rules)
+  body <- sourceLines input >>= parseBody table (optionsKind options)
+  pure (Section (optionsTitle options) Nothing body)
+
+parseBody :: NotationTable -> BlockKind -> [Located Text] -> Either Diagnostic BlockBody
+parseBody table = \case
+  BnfKind -> fmap BnfGroups . parseBnf table
+  EquationKind -> fmap Equations . parseEquations table
+  InferenceKind -> \lines' -> do
+    traverse_ rejectDash lines'
+    InferenceRules <$> parseRuleLines table lines'
+  where
+    rejectDash line = case dashLabel line of
+      Just (marker, _) -> Left (Diagnostic ReservedDashLine marker "Dash labels are reserved for BNF groups. Use a Unicode ‘─’ rule bar." [])
+      Nothing -> Right ()
 
 parseRuleLines :: NotationTable -> [Located Text] -> Either Diagnostic [Rule]
 parseRuleLines table lines' = collectRules lines' >>= traverse (parseRule table)

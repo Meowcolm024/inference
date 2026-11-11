@@ -7,66 +7,43 @@
 infix:53 " ∈ " => "\in"
 infix:53 " ∉ " => "\notin"
 infix:53 " ≠ " => "\ne"
+infix:53 " = " => "="
+infixr:35 " ∧ " => "\land"
 infix:50 " → " => "\mathrel{\to_{\beta}}"
 infix:50 " ↠ " => "\mathrel{\to_{\beta}^{*}}"
 notation:56 "λ" x:atom "." e:56 => "\lambda " x ".\," e
-notation:10 e:11 "term" => e "\;\mathsf{term}"
 notation:75 "FV" e:76 => "\mathrm{FV}\," e
-notation:75 "Vars" e:76 => "\mathrm{Vars}\," e
-notation:50 e:51 "[" s:0 "/" x:atom "]" "=" r:51 => e "[" s "/" x "] = " r
+notation:53 z:atom "fresh" => z "\;\mathsf{fresh}"
+notation:85 e:85 "[" s:0 "/" x:atom "]" => e "[" s "/" x "]"
 \end{inference-notation}
 
-\begin{inference}[rule_set=Untyped lambda syntax]
-──────────────────────────── S-Var
-x term
+Variables range over names, and terms are identified up to alpha-equivalence.
 
-e term
-──────────────────────────── S-Abs
-λ x . e term
-
-e₁ term
-e₂ term
-──────────────────────────── S-App
-e₁ e₂ term
+\begin{inference}[kind=bnf,rule_set=Untyped lambda syntax]
+--------------- Terms
+e,f,s ::= x | e₁ e₂
+        | λ x . e
 \end{inference}
 
-\begin{inference}[rule_set=Capture-avoiding substitution]
-──────────────────────────── Subst-VarSame
-x [ s / x ] = s
+Substitution replaces free occurrences and avoids capture. In the guards,
+\(\mathrm{FV}\,s\) denotes the free variables of \(s\). In the final equation,
+\(z\;\mathsf{fresh}\) means that \(z\) occurs nowhere in \(e\) or \(s\) and
+is distinct from \(x\) and \(y\).
 
-y ≠ x
-──────────────────────────── Subst-VarOther
-y [ s / x ] = y
+\begin{inference}[kind=equation,rule_set=Capture-avoiding substitution]
+x [s/y] = s -- if x = y
+x [s/y] = x -- if x ≠ y
 
-e₁ [ s / x ] = r₁
-e₂ [ s / x ] = r₂
-──────────────────────────── Subst-App
-(e₁ e₂) [ s / x ] = r₁ r₂
+(e₁ e₂) [s/x] = (e₁ [s/x]) (e₂ [s/x])
 
-──────────────────────────── Subst-Shadow
-(λ x . e) [ s / x ] = λ x . e
-
-y ≠ x
-y ∉ FV s
-e [ s / x ] = r
-──────────────────────────── Subst-UnderBinder
-(λ y . e) [ s / x ] = λ y . r
-
-y ≠ x
-y ∈ FV s
-z ∉ Vars (λ y . e)
-z ∉ Vars s
-z ≠ x
-e [ z / y ] = f
-f [ s / x ] = r
-──────────────────────────── Subst-Rename
-(λ y . e) [ s / x ] = λ z . r
+(λ x . e) [s/x] = λ x . e
+(λ y . e) [s/x] = λ y . e [s/x] -- if y ≠ x ∧ y ∉ FV s
+(λ y . e) [s/x] = λ z . e [z/y] [s/x] -- if y ≠ x ∧ y ∈ FV s ∧ z fresh
 \end{inference}
 
 \begin{inference}[rule_set=Beta reduction]
-e [ s / x ] = r
 ──────────────────────────── R-Beta
-(λ x . e) s → r
+(λ x . e) s → e [s/x]
 
 e → f
 ──────────────────────────── R-AppLeft

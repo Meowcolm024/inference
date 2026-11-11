@@ -1,0 +1,15 @@
+\begin{inference}[kind=bnf,rule_set={Types, contexts}]
+--- Types #_%
+A,B ::= ι | A → B | X
+                        | ∀ X . A
+
+--------------- Contexts
+Γ ::= ∅ | Γ, x : A
+\end{inference}
+
+\begin{inference-notation}
+infixr:60 "→" => "\to"
+infix:55 ":" => ":"
+infixl:52 "," => ","
+notation:56 "∀" X:atom "." A:56 => "\forall " X ".\," A
+\end{inference-notation}

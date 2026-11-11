@@ -61,9 +61,11 @@ library:
   - Inference.LaTeX
   - Inference.Parser
   other-modules:
+  - Inference.Parser.Body
   - Inference.Parser.Environment
   - Inference.Parser.Expression
   - Inference.Parser.Notation
+  - Inference.Parser.Options
   - Inference.Parser.Source
   dependencies:
   - containers
@@ -90,7 +92,17 @@ executables:
 tests:
   inference-test:
     main:                Spec.hs
-    source-dirs:         test
+    source-dirs:
+    - test
+    - app
+    other-modules:
+    - BlockTests
+    - FilterTests
+    - Inference.Pandoc
+    - LaTeXTests
+    - ParserTests
+    - SourceTests
+    - TestSupport
     ghc-options:
     - -threaded
     - -rtsopts
@@ -98,8 +110,11 @@ tests:
     dependencies:
     - inference
     - bytestring
+    - containers
+    - pandoc-types
     - tasty
     - tasty-golden
     - tasty-hunit
     - tasty-quickcheck
     - text
+    - transformers

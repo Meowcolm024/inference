@@ -1,6 +1,6 @@
 # inference
 
-`inference` is a Haskell library and CLI that turn Unicode inference rules into LaTeX `mathpar` fragments. The parser produces a source-spanned AST and supports user-defined mixfix notation, infix associativity, per-hole precedence, and left-associative application by juxtaposition. Identifiers can include subscripts and superscripts such as `Γᵢ` and `eⁿ⁺¹`.
+`inference` is a Haskell library and CLI for typesetting Unicode inference rules, BNF productions, and equations inside LaTeX documents. The parser produces a source-spanned AST and supports user-defined mixfix notation, infix associativity, per-hole precedence, and left-associative application by juxtaposition. Identifiers can include subscripts and superscripts such as `Γᵢ` and `eⁿ⁺¹`.
 
 ## Input
 
@@ -22,6 +22,30 @@ notation:50 Γ:51 "⊢" e:51 ":" A:51 => Γ " \vdash " e " : " A
 \end{inference}
 ```
 
+Set `kind=bnf` or `kind=equation` on an `inference` environment to select another body grammar. Omit `kind` for inference rules. Options are separated by commas. Brace a caption containing a comma, as in `rule_set={Types, terms}`.
+
+```text
+\begin{inference-notation}
+infix:53 "=" => "="
+\end{inference-notation}
+
+\begin{inference}[kind=bnf,rule_set=Syntax]
+--- Terms
+e,f ::= x | e₁ e₂
+      | f (e x)
+\end{inference}
+
+\begin{inference}[kind=equation,rule_set=Equations]
+f x = y -- if x = y
+
+x = x
+\end{inference}
+```
+
+In BNF, `::=` and `|` are grammar keywords. Start each group with a name after three or more dashes, and separate groups with a blank line. Indented `|` rows continue the preceding production. The renderer omits their leading bar, preserves row breaks, and uses half an em per source column of indentation.
+
+In equations, the first outer `=` is a grammar keyword. Both sides use the shared notation table. A whitespace-separated `--` introduces a guard, and an initial `if` is rendered upright. Guard conditions use ordinary notation, so the equality declaration above is needed for `x = y` inside the guard. Blank source rows remain separated in the output. Parentheses and mixfix delimiters protect separators inside expressions.
+
 ## Run the CLI
 
 By default, `inference` runs as a Pandoc JSON filter. Use Pandoc Markdown or Org as the input format and `latex` as the output format.
@@ -31,7 +55,7 @@ stack build
 stack exec pandoc -- --from=markdown --to=latex --filter=inference example/stlc.md -o notes.tex
 ```
 
-For Org documents, use `--from=org` with `#+BEGIN_SRC inference` blocks. Both formats support a `rule_set` caption and separate `inference-notation` blocks. Notation applies throughout the document, including to earlier rule blocks. Other output formats pass through unchanged. The [filter design](docs/DESIGN.md#4-pandoc-json-filter) shows both block syntaxes.
+For Org documents, use `--from=org` with `#+BEGIN_SRC inference` blocks. Both formats support a `rule_set` caption, a `kind` attribute, and separate `inference-notation` blocks. Select BNF with `{.inference kind=bnf}` in Markdown or `#+BEGIN_SRC inference :kind bnf` in Org. Use `equation` for equation blocks. Notation applies throughout the document, including to earlier blocks. Other output formats pass through unchanged. The [filter design](docs/DESIGN.md#4-pandoc-json-filter) shows both block syntaxes.
 
 Use `--source` to rewrite inference environments in a LaTeX fragment or document.
 
@@ -72,16 +96,16 @@ On invalid input, `formatDiagnostic` explains the error and highlights its locat
 
 ## Tests
 
-Run `stack test` for parser and LaTeX golden tests.
+Run `stack test` for parser, source rewriting, block layout, Pandoc filter, and LaTeX golden tests. `test/Spec.hs` is the entry point and assembles the separate test modules.
 
 ## Examples
 
-- Untyped lambda calculus with capture-avoiding substitution and full β-reduction. [LaTeX source](example/untyped-lambda.tex)
+- Untyped lambda calculus with BNF syntax, guarded substitution equations, and full β-reduction rules. [LaTeX source](example/untyped-lambda.tex)
 - Simply typed lambda calculus. [Markdown tutorial](example/stlc.md) · [LaTeX source](example/stlc.tex)
 - Explicit System F with products. [LaTeX source](example/system-f.tex)
 
 ## Roadmap
 
-Planned work includes BNF-like syntax shorthand and a Unicode printer.
+Planned work includes a Unicode printer and further output backends.
 
 See the [design](docs/DESIGN.md) for the input grammar and the [implementation plan](docs/IMPLEMENTATION-PLAN.md) for the remaining stages.

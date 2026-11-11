@@ -1,11 +1,11 @@
-module Inference.Parser.Expression (parseExpression) where
+module Inference.Parser.Expression (parseExpression, parseExpressionBefore) where
 
 import Data.Char (GeneralCategory (MathSymbol), generalCategory, isSpace)
 import Data.Either (isRight, partitionEithers)
-import Data.List (find, maximumBy)
+import Data.List (find, maximumBy, sortOn)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
-import Data.Ord (comparing)
+import Data.Ord (Down (..), comparing)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -13,14 +13,24 @@ import Inference.AST
 import Inference.Parser.Notation
 import Inference.Parser.Source
 
-data Token = Name Text | Keyword Text | Open | Close
+data Token = Name Text | Keyword Text | Boundary Text | Open | Close
   deriving (Eq)
 
 type Tokens = [Located Token]
 
-tokenize :: NotationTable -> Located Text -> Either Diagnostic Tokens
-tokenize table (Located source text) = go (spanStart source) text
+tokenize :: Bool -> NotationTable -> Located Text -> Either Diagnostic Tokens
+tokenize layout table (Located source text) = go (spanStart source) text
   where
+    layoutMarkers = ["::=", "|", "=", "--"]
+    symbols =
+      if layout
+        then Map.map (sortOn (Down . Text.length)) (Map.unionWith (++) (symbolicLiterals table) (Map.fromListWith (++) [(first, [literal]) | literal <- layoutMarkers, Just (first, _) <- [Text.uncons literal]]))
+        else symbolicLiterals table
+    guardBoundary start input =
+      let offset = sourceColumn start - sourceColumn (spanStart source)
+          before = Text.take offset text
+          after = Text.drop 2 input
+       in maybe False (isSpace . snd) (Text.unsnoc before) && maybe True (isSpace . fst) (Text.uncons after)
     go start input = case Text.uncons input of
       Nothing -> Right []
       Just (first, rest)
@@ -32,9 +42,13 @@ tokenize table (Located source text) = go (spanStart source) text
              in emit start (1 + Text.length suffix) token remaining
         | first == '(' -> emit start 1 Open rest
         | first == ')' -> emit start 1 Close rest
-        | Just literal <- find (`Text.isPrefixOf` input) (Map.findWithDefault [] first (symbolicLiterals table)) ->
+        | Just literal <- find (`Text.isPrefixOf` input) (Map.findWithDefault [] first symbols) ->
             let width = Text.length literal
-             in emit start width (Keyword literal) (Text.drop width input)
+             in if literal == "--" && layout && not (guardBoundary start input)
+                  then case find (\candidate -> Text.isPrefixOf candidate input) (Map.findWithDefault [] first (symbolicLiterals table)) of
+                    Just declared -> emit start (Text.length declared) (Keyword declared) (Text.drop (Text.length declared) input)
+                    Nothing -> Left (Diagnostic InvalidToken (lineSpan start 0 1) "A guard delimiter requires whitespace on both sides." [])
+                  else emit start width (if layout && elem literal layoutMarkers then Boundary literal else Keyword literal) (Text.drop width input)
         | generalCategory first == MathSymbol -> emit start 1 (Name (Text.singleton first)) rest
         | otherwise ->
             Left (Diagnostic InvalidToken (lineSpan start 0 1) ("Unknown token ‘" <> Text.singleton first <> "’.") [])
@@ -58,12 +72,12 @@ andThen results next = concatMap (either (pure . Left) next) results
 
 parseExpression :: NotationTable -> Located Text -> Either Diagnostic Expr
 parseExpression table source = do
-  tokens <- tokenize table source
+  tokens <- tokenize False table source
   let context = Context table (pointSpan (spanEnd (location source)))
       complete (BoundExpr expression _, []) = [Right expression]
       complete (_, token : _) =
         [Left (Diagnostic UnexpectedToken (location token) ("Unexpected " <> describeToken (locatedValue token) <> " after expression.") [])]
-      (failures, expressions) = partitionEithers (parseAt context Nothing 0 tokens `andThen` complete)
+      (failures, expressions) = partitionEithers (parseAt context (const False) 0 tokens `andThen` complete)
   case expressions of
     first : second : _ -> Left (ambiguity table (location source) first second)
     [expression] -> Right expression
@@ -74,22 +88,53 @@ parseExpression table source = do
     failurePriority problem =
       (spanStart (diagnosticSpan problem), diagnosticKind problem == ExpectedDelimiter)
 
-parseAt :: Context -> Maybe Text -> Integer -> Tokens -> Search (BoundExpr, Tokens)
+tokenLiteral :: Token -> Maybe Text
+tokenLiteral (Keyword literal) = Just literal
+tokenLiteral (Boundary literal) = Just literal
+tokenLiteral _ = Nothing
+
+-- Stop at a layout delimiter only at the current expression level. Pattern
+-- delimiters and grouped expressions can consume the same tokens internally.
+parseExpressionBefore :: NotationTable -> [Text] -> Located Text -> Either Diagnostic (Expr, Maybe (Located Text), Located Text)
+parseExpressionBefore table markers source = do
+  tokens <- tokenize True table source
+  let context = Context table (pointSpan (spanEnd (location source)))
+      stops (Boundary literal) = elem literal markers
+      stops _ = False
+      complete (BoundExpr expression _, remaining) = case remaining of
+        [] -> Right (expression, Nothing, sliceLocated (Text.length (locatedValue source)) 0 source)
+        Located span' (Boundary literal) : _
+          | elem literal markers ->
+              let offset = sourceColumn (spanEnd span') - sourceColumn (spanStart (location source))
+               in Right (expression, Just (Located span' literal), trimLocated (sliceLocated offset (Text.length (locatedValue source) - offset) source))
+        token : _ -> Left (Diagnostic UnexpectedToken (location token) ("Unexpected " <> describeToken (locatedValue token) <> " after expression.") [])
+      (failures, results) = partitionEithers (map (>>= complete) (parseAt context stops 0 tokens))
+  case results of
+    (expression, _, _) : (other, _, _) : _ -> Left (ambiguity table (location source) expression other)
+    [result] -> Right result
+    [] -> case failures of
+      failure : rest -> Left (maximumBy (comparing (spanStart . diagnosticSpan)) (failure :| rest))
+      [] -> Left (expected context tokens ExpectedExpression "Expected an expression.")
+
+parseAt :: Context -> (Token -> Bool) -> Integer -> Tokens -> Search (BoundExpr, Tokens)
 parseAt context delimiter minimumPrecedence tokens =
   term tokens `andThen` extend
   where
     table = notationTable context
-    term input@(Located lead (Keyword literal) : rest)
-      | Just literal /= delimiter,
+    term input@(Located lead token : rest)
+      | Just literal <- tokenLiteral token,
+        not (delimiter token),
         candidates <- Map.findWithDefault [] literal (prefixNotations table),
         notations <- filter ((>= minimumPrecedence) . notationPrecedence) candidates,
         not (null notations) =
           concat [parseNotationUse context delimiter notation lead [] parts rest | notation <- notations, _ :| parts <- [notationPattern notation]]
-      | otherwise = [Left (expected context input ExpectedExpression "Expected an expression.")]
+      | Just _ <- tokenLiteral token = [Left (expected context input ExpectedExpression "Expected an expression.")]
+      | otherwise = parseApplication context input
     term input = parseApplication context input
 
-    extend current@(left, Located lead (Keyword literal) : rest)
-      | Just literal /= delimiter =
+    extend current@(left, Located lead token : rest)
+      | Just literal <- tokenLiteral token,
+        not (delimiter token) =
           let candidates = Map.findWithDefault [] literal (leftNotations table)
               attempts =
                 concat
@@ -128,12 +173,12 @@ parseApplication context tokens = parseAtom context tokens `andThen` extend
 parseAtom :: Context -> Tokens -> Search (Expr, Tokens)
 parseAtom _ (Located source (Name name) : rest) = [Right (Expr source (Atom name), rest)]
 parseAtom context (Located start Open : rest) =
-  parseAt context Nothing 0 rest `andThen` \case
+  parseAt context (const False) 0 rest `andThen` \case
     (BoundExpr expression _, Located end Close : remaining) -> [Right (Expr (cover start end) (Group expression), remaining)]
     (_, remaining) -> [Left (expected context remaining ExpectedDelimiter "Expected closing parenthesis.")]
 parseAtom context tokens = [Left (expected context tokens ExpectedExpression "Expected an atom or a parenthesized expression.")]
 
-parseNotationUse :: Context -> Maybe Text -> Notation -> SourceSpan -> [Expr] -> [PatternPart] -> Tokens -> Search (BoundExpr, Tokens)
+parseNotationUse :: Context -> (Token -> Bool) -> Notation -> SourceSpan -> [Expr] -> [PatternPart] -> Tokens -> Search (BoundExpr, Tokens)
 parseNotationUse context delimiter notation lead leftArguments = match leftArguments lead
   where
     start = case leftArguments of
@@ -143,12 +188,12 @@ parseNotationUse context delimiter notation lead leftArguments = match leftArgum
       let expression = Expr (cover start end) (NotationApplication (notationId notation) lead (reverse arguments))
        in [Right (BoundExpr expression (Just (notationPrecedence notation)), remaining)]
     match arguments _ (Literal literal : parts) remaining = case remaining of
-      Located source (Keyword actual) : rest
-        | actual == literal -> match arguments source parts rest
+      Located source token : rest
+        | tokenLiteral token == Just literal -> match arguments source parts rest
       _ -> [Left (expected context remaining ExpectedDelimiter ("Expected delimiter ‘" <> literal <> "’."))]
     match arguments _ (Hole _ requirement : parts) remaining =
       let nextDelimiter = case parts of
-            Literal literal : _ -> Just literal
+            Literal literal : _ -> (== Just literal) . tokenLiteral
             _ -> delimiter
           parseHole = case requirement of
             AtomOnly -> parseAtom context remaining
@@ -165,6 +210,7 @@ describeToken :: Token -> Text
 describeToken = \case
   Name name -> "atom ‘" <> name <> "’"
   Keyword literal -> "notation token ‘" <> literal <> "’"
+  Boundary literal -> "layout delimiter ‘" <> literal <> "’"
   Open -> "opening parenthesis"
   Close -> "closing parenthesis"
 

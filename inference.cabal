@@ -33,11 +33,16 @@ extra-source-files:
     test/fixtures/negative/malformed-separator.rules
     test/fixtures/negative/missing-conclusion.rules
     test/fixtures/negative/missing-delimiter.rules
+    test/fixtures/latex/bnf.rules
+    test/fixtures/latex/equations.rules
     test/fixtures/latex/features.rules
     test/fixtures/latex/sections.rules
+    test/fixtures/latex/bnf.tex
+    test/fixtures/latex/equations.tex
     test/fixtures/latex/features.tex
     test/fixtures/latex/sections.tex
     test/fixtures/latex/stlc.tex
+    test/fixtures/latex/untyped-lambda.tex
 
 source-repository head
   type: git
@@ -49,9 +54,11 @@ library
       Inference.LaTeX
       Inference.Parser
   other-modules:
+      Inference.Parser.Body
       Inference.Parser.Environment
       Inference.Parser.Expression
       Inference.Parser.Notation
+      Inference.Parser.Options
       Inference.Parser.Source
   hs-source-dirs:
       src
@@ -110,11 +117,16 @@ test-suite inference-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Paths_inference
-  autogen-modules:
-      Paths_inference
+      BlockTests
+      FilterTests
+      Inference.Pandoc
+      LaTeXTests
+      ParserTests
+      SourceTests
+      TestSupport
   hs-source-dirs:
       test
+      app
   default-extensions:
       DataKinds
       DerivingVia
@@ -130,10 +142,13 @@ test-suite inference-test
   build-depends:
       base >=4.7 && <5
     , bytestring
+    , containers
     , inference
+    , pandoc-types
     , tasty
     , tasty-golden
     , tasty-hunit
     , tasty-quickcheck
     , text
+    , transformers
   default-language: GHC2021

@@ -1,4 +1,4 @@
-module Inference.Pandoc (runFilter) where
+module Inference.Pandoc (runFilter, compileDocument) where
 
 import Control.Exception (ErrorCall (..), Handler (..), IOException, catches)
 import Control.Monad.Trans.State.Strict (StateT (..), evalStateT)
@@ -11,13 +11,13 @@ import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
 import Inference.AST (Document (..), SourcePosition (..), SourceSpan (..))
 import Inference.LaTeX (renderLatex)
-import Inference.Parser (Diagnostic (..), formatDiagnostic, parseNotationBlock, parseRuleSection)
+import Inference.Parser (Diagnostic (..), formatDiagnostic, parseBlockAttributes, parseBlockSection, parseNotationBlock)
 import System.Exit (die, exitFailure)
 import System.IO (hSetBinaryMode, hSetEncoding, stderr, stdin, stdout, utf8)
 import Text.Pandoc.JSON (Block (..), Format (..), Pandoc (..), toJSONFilter)
 import Text.Pandoc.Walk (query, walkM)
 
-data BlockKind = NotationBlock | RuleBlock (Maybe Text)
+data BlockKind = NotationBlock | RuleBlock [(Text, Text)]
 
 data InferenceBlock = InferenceBlock
   { blockId :: Text,
@@ -52,10 +52,9 @@ compileDocument (Pandoc metadata blocks) = do
   notations <- case parseNotationBlock source of
     Left diagnostic -> Left (formatNotationDiagnostic origins diagnostic)
     Right parsed -> Right parsed
-  let parseSection = parseRuleSection notations
-      render ordinal block = case blockKind block of
+  let render ordinal block = case blockKind block of
         NotationBlock -> Right (rawLatex (Text.unlines (map ("% " <>) (Text.lines (blockSource block)))))
-        RuleBlock title -> case parseSection title (blockSource block) >>= \section -> renderLatex (Document notations [section]) of
+        RuleBlock attributes -> case parseBlockAttributes attributes >>= \options -> parseBlockSection notations options (blockSource block) >>= \section -> renderLatex (Document notations [section]) of
           Left diagnostic ->
             let related sourceSpan = formatNotationDiagnostic origins diagnostic {diagnosticSpan = sourceSpan, diagnosticMessage = "Competing notation declared here."}
              in Left (formatBlockDiagnostic ordinal block diagnostic <> foldMap related (diagnosticRelated diagnostic))
@@ -68,13 +67,7 @@ compileDocument (Pandoc metadata blocks) = do
 inferenceBlock :: Block -> Maybe InferenceBlock
 inferenceBlock (CodeBlock (identifier, classes, attributes) source)
   | "inference-notation" `elem` classes = Just (InferenceBlock identifier NotationBlock source)
-  | "inference" `elem` classes = Just (InferenceBlock identifier (RuleBlock caption) source)
-  where
-    -- Pandoc's Org reader keeps the outer double quotes on a quoted value.
-    caption = unquote <$> lookup "rule_set" attributes
-    unquote value = case Text.stripPrefix "\"" value >>= Text.stripSuffix "\"" of
-      Just content -> content
-      Nothing -> value
+  | "inference" `elem` classes = Just (InferenceBlock identifier (RuleBlock attributes) source)
 inferenceBlock _ = Nothing
 
 replaceBlock :: (Int -> InferenceBlock -> Either Text Block) -> Block -> StateT Int (Either Text) Block

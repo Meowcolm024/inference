@@ -1,0 +1,12 @@
+\begin{inference-notation}
+infix:53 "=" => "="
+infix:53 "≠" => "\ne"
+notation:85 e:85 "[" s:0 "/" x:atom "]" => e "[" s "/" x "]"
+\end{inference-notation}
+\begin{inference}[rule_set=Substitution,kind=equation]
+x [e/y] = e -- if x = y
+x [e/y] = x -- if x ≠ y
+
+e = e
+e = f -- x = y
+\end{inference}

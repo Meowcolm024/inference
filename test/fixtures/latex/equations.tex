@@ -1,0 +1,15 @@
+% infix:53 "=" => "="
+% infix:53 "≠" => "\ne"
+% notation:85 e:85 "[" s:0 "/" x:atom "]" => e "[" s "/" x "]"
+\begin{figure}
+\[
+\begin{array}{rcll}
+x[e/y] & = & e & \mbox{if}\;x=y \\
+x[e/y] & = & x & \mbox{if}\;x\ne y \\
+{} & {} & {} & {} \\
+e & = & e &  \\
+e & = & f & x=y
+\end{array}
+\]
+\caption{Substitution}
+\end{figure}

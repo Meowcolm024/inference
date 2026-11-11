@@ -20,31 +20,82 @@ compileSource input = do
     renderChunk _ (NotationSource _ body) =
       Right (if Text.null body then "\n" else Text.unlines (map ("% " <>) (Text.lines body)))
     renderChunk notations (RuleSetSource section)
-      | null (sectionRules section) = Right ""
+      | emptyBody (sectionBody section) = Right ""
       | otherwise = renderSection notations section
 
 renderLatex :: Document -> Either Diagnostic Text
 renderLatex document = do
   let notations = notationIndex (documentNotations document)
-      sections = filter (not . null . sectionRules) (documentSections document)
+      sections = filter (not . emptyBody . sectionBody) (documentSections document)
   fragments <- traverse (renderSection notations) sections
   pure (Text.intercalate "\n" fragments)
 
 notationIndex :: [Notation] -> Map NotationId Notation
 notationIndex notations = Map.fromList [(notationId notation, notation) | notation <- notations]
 
+emptyBody :: BlockBody -> Bool
+emptyBody (InferenceRules rules) = null rules
+emptyBody (BnfGroups groups) = null groups
+emptyBody (Equations rows) = all blank rows
+  where
+    blank (EquationBlank _) = True
+    blank (EquationLine _) = False
+
 renderSection :: Map NotationId Notation -> Section -> Either Diagnostic Text
 renderSection notations section = do
-  rules <- traverse (renderRule notations) (sectionRules section)
-  let mathpar = Text.unlines (["\\begin{mathpar}"] ++ intersperse "" rules ++ ["\\end{mathpar}"])
+  content <- case sectionBody section of
+    InferenceRules rules -> do
+      rendered <- traverse (renderRule notations) rules
+      pure (Text.unlines (["\\begin{mathpar}"] ++ intersperse "" rendered ++ ["\\end{mathpar}"]))
+    BnfGroups groups -> do
+      rendered <- traverse (renderBnfGroup notations) groups
+      pure (displayArray "l" (Text.intercalate " \\\\\n{} \\\\\n" rendered))
+    Equations rows -> do
+      rendered <- traverse (renderEquationRow notations) rows
+      pure (displayArray "rcll" (Text.intercalate " \\\\\n" rendered))
   pure $ case sectionTitle section of
-    Nothing -> mathpar
+    Nothing -> content
     Just title ->
       "\\begin{figure}\n"
-        <> mathpar
+        <> content
         <> "\\caption{"
         <> Text.concatMap escapePlainTextChar title
         <> "}\n\\end{figure}\n"
+
+displayArray :: Text -> Text -> Text
+displayArray columns body =
+  "\\[\n\\begin{array}{" <> columns <> "}\n" <> body <> "\n\\end{array}\n\\]\n"
+
+renderBnfGroup :: Map NotationId Notation -> BnfGroup -> Either Diagnostic Text
+renderBnfGroup notations group = do
+  productions <- traverse renderProduction (bnfProductions group)
+  pure ("\\mbox{" <> Text.concatMap escapePlainTextChar (bnfGroupName group) <> "} \\\\\n" <> Text.intercalate " \\\\\n" productions)
+  where
+    renderProduction production = do
+      categories <- traverse (renderExpr notations) (productionCategories production)
+      rows <- traverse (renderRow (Text.intercalate "," categories)) (zip [0 :: Int ..] (productionRows production))
+      pure (Text.intercalate " \\\\\n" rows)
+    renderRow categories (index, row) = do
+      alternatives <- traverse (renderExpr notations) (productionAlternatives row)
+      let prefix = if index == 0 then categories <> " \\mathrel{::=} " else ""
+          columns = productionRowIndent row
+          indentation =
+            if columns == 0
+              then ""
+              else "\\hspace{" <> Text.pack (show (div columns 2)) <> (if odd columns then ".5" else "") <> "em}"
+      pure (indentation <> prefix <> Text.intercalate " \\mid " alternatives)
+
+renderEquationRow :: Map NotationId Notation -> EquationRow -> Either Diagnostic Text
+renderEquationRow _ (EquationBlank _) = Right "{} & {} & {} & {}"
+renderEquationRow notations (EquationLine equation) = do
+  left <- renderExpr notations (equationLeft equation)
+  right <- renderExpr notations (equationRight equation)
+  condition <- case equationGuard equation of
+    Nothing -> Right ""
+    Just guard -> do
+      expression <- renderExpr notations (guardExpression guard)
+      pure ((if guardHasIf guard then "\\mbox{if}\\;" else "") <> expression)
+  pure (left <> " & = & " <> right <> " & " <> condition)
 
 renderRule :: Map NotationId Notation -> Rule -> Either Diagnostic Text
 renderRule notations rule = do

@@ -1,0 +1,87 @@
+\documentclass{article}
+\usepackage{mathpartir}
+
+\begin{document}
+
+% infix:53 " ∈ " => "\in"
+% infix:53 " ∉ " => "\notin"
+% infix:53 " ≠ " => "\ne"
+% infix:53 " = " => "="
+% infixr:35 " ∧ " => "\land"
+% infix:50 " → " => "\mathrel{\to_{\beta}}"
+% infix:50 " ↠ " => "\mathrel{\to_{\beta}^{*}}"
+% notation:56 "λ" x:atom "." e:56 => "\lambda " x ".\," e
+% notation:75 "FV" e:76 => "\mathrm{FV}\," e
+% notation:53 z:atom "fresh" => z "\;\mathsf{fresh}"
+% notation:85 e:85 "[" s:0 "/" x:atom "]" => e "[" s "/" x "]"
+
+Variables range over names, and terms are identified up to alpha-equivalence.
+
+\begin{figure}
+\[
+\begin{array}{l}
+\mbox{Terms} \\
+e,f,s \mathrel{::=} x \mid e_{1}\,e_{2} \\
+\hspace{6em}\lambda x.\,e
+\end{array}
+\]
+\caption{Untyped lambda syntax}
+\end{figure}
+
+Substitution replaces free occurrences and avoids capture. In the guards,
+\(\mathrm{FV}\,s\) denotes the free variables of \(s\). In the final equation,
+\(z\;\mathsf{fresh}\) means that \(z\) occurs nowhere in \(e\) or \(s\) and
+is distinct from \(x\) and \(y\).
+
+\begin{figure}
+\[
+\begin{array}{rcll}
+x[s/y] & = & s & \mbox{if}\;x=y \\
+x[s/y] & = & x & \mbox{if}\;x\ne y \\
+{} & {} & {} & {} \\
+\left(e_{1}\,e_{2}\right)[s/x] & = & \left(e_{1}[s/x]\right)\,\left(e_{2}[s/x]\right) &  \\
+{} & {} & {} & {} \\
+\left(\lambda x.\,e\right)[s/x] & = & \lambda x.\,e &  \\
+\left(\lambda y.\,e\right)[s/x] & = & \lambda y.\,e[s/x] & \mbox{if}\;y\ne x\land y\notin\mathrm{FV}\,s \\
+\left(\lambda y.\,e\right)[s/x] & = & \lambda z.\,e[z/y][s/x] & \mbox{if}\;y\ne x\land y\in\mathrm{FV}\,s\land z\;\mathsf{fresh}
+\end{array}
+\]
+\caption{Capture-avoiding substitution}
+\end{figure}
+
+\begin{figure}
+\begin{mathpar}
+\inferrule*[right={R-Beta}]
+  { }
+  {\left(\lambda x.\,e\right)\,s\mathrel{\to_{\beta}}e[s/x]}
+
+\inferrule*[right={R-AppLeft}]
+  {e\mathrel{\to_{\beta}}f}
+  {e\,s\mathrel{\to_{\beta}}f\,s}
+
+\inferrule*[right={R-AppRight}]
+  {e\mathrel{\to_{\beta}}f}
+  {s\,e\mathrel{\to_{\beta}}s\,f}
+
+\inferrule*[right={R-UnderBinder}]
+  {e\mathrel{\to_{\beta}}f}
+  {\lambda x.\,e\mathrel{\to_{\beta}}\lambda x.\,f}
+\end{mathpar}
+\caption{Beta reduction}
+\end{figure}
+
+\begin{figure}
+\begin{mathpar}
+\inferrule*[right={R-ManyRefl}]
+  { }
+  {e\mathrel{\to_{\beta}^{*}}e}
+
+\inferrule*[right={R-ManyStep}]
+  {e\mathrel{\to_{\beta}}f \\
+   f\mathrel{\to_{\beta}^{*}}g}
+  {e\mathrel{\to_{\beta}^{*}}g}
+\end{mathpar}
+\caption{Multi-step reduction}
+\end{figure}
+
+\end{document}
