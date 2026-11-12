@@ -78,11 +78,21 @@ Each `.tex` example is a complete LaTeX document that loads `mathpartir`. You ca
 
 Notation declarations can omit `=>`. LaTeX then renders literals and hole arguments in pattern order, translating common Greek letters, math symbols, and scripts in both atoms and notation literals. Other Unicode characters pass through and require support from the document's TeX engine and fonts. Use an explicit template such as `infixr:60 "→" => "\Rightarrow"` to override the default rendering.
 
+A notation can also have indented backend overrides immediately below its declaration. Use each backend name once per notation. An inline `=>` counts as a LaTeX override. Infix override clauses refer to the operands as `lhs` and `rhs`.
+
+```text
+infixr:60 "→"
+  latex => lhs "\Rightarrow " rhs
+  html => lhs "<mo>→</mo>" rhs
+```
+
+The LaTeX renderer uses its own override when present and otherwise renders the pattern. Other backend overrides are available through the library parser.
+
 ## Use the library
 
 `Inference.LaTeX.compileSource` rewrites a LaTeX `Text` input directly. Use `Inference.Parser.parseSource` to inspect its parsed chunks. Rules, BNF productions, and equations share a backend-independent expression AST that retains Unicode text, notation IDs, and arguments.
 
-Use `parseSourceWithLatexTemplates` with `renderSourceLatex` to keep parsing and rendering separate. When parsing individual blocks, use `parseNotationBlockWithLatexTemplates` to obtain the syntax declarations and LaTeX templates, then pass the declarations to `parseBlockSection` and the templates to `renderLatex` alongside the assembled `Document`. Supply `mempty` for the templates to use pattern-based rendering throughout.
+Use `parseSourceWithLatexTemplates` with `renderSourceLatex` to keep parsing and rendering separate. When parsing individual blocks, use `parseNotationBlockWithLatexTemplates` to obtain the syntax declarations and LaTeX templates, then pass the declarations to `parseBlockSection` and the templates to `renderLatex` alongside the assembled `Document`. Supply `mempty` for the templates to use pattern-based rendering throughout. Use `parseSourceWithTemplates` or `parseNotationBlockWithTemplates` to obtain overrides for all declared backends, and `Inference.Templates.templatesFor` to select one backend.
 
 From the repository root, run `stack repl inference:lib` and enter these commands.
 

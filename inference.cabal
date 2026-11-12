@@ -22,12 +22,14 @@ extra-source-files:
     example/stlc.tex
     example/system-f.tex
     example/untyped-lambda.tex
+    test/fixtures/positive/backend-overrides.rules
     test/fixtures/positive/layout.rules
     test/fixtures/positive/nested-mixfix.rules
     test/fixtures/positive/scripts.rules
     test/fixtures/negative/ambiguous-infix.rules
     test/fixtures/negative/ambiguous-nesting.rules
     test/fixtures/negative/ambiguous-prefix.rules
+    test/fixtures/negative/duplicate-backend.rules
     test/fixtures/negative/invalid-template.rules
     test/fixtures/negative/invalid-token.rules
     test/fixtures/negative/malformed-separator.rules
@@ -51,9 +53,11 @@ source-repository head
 library
   exposed-modules:
       Inference.AST
+      Inference.Blocks
       Inference.LaTeX
       Inference.LaTeX.Templates
       Inference.Parser
+      Inference.Templates
   other-modules:
       Inference.LaTeX.Unicode
       Inference.Parser.Body

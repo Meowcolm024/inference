@@ -1,0 +1,5 @@
+notation:50 Γ:51 "⊢" e:51 ":" A:51
+  latex => Γ " \vdash " e " : " A
+  html => Γ "<mo>⊢</mo>" e "<mo>:</mo>" A
+infixr:60 "→"
+  lean => "Arrow " lhs " " rhs

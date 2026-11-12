@@ -1,6 +1,6 @@
 # A Unicode Inference-Rule Typesetter
 
-A standalone Haskell library and command-line tool for typesetting Unicode inference rules, BNF productions, and equations inside LaTeX environments. The notation design draws on Lean 4. The CLI also integrates with Pandoc as a JSON filter.
+A Haskell library and command-line tool for typesetting Unicode inference rules, BNF productions, and equations. The notation design draws on Lean 4. The primary inputs are LaTeX environments and attributed code blocks in Pandoc JSON documents.
 
 Conceptually, it sits somewhere between Ott, Lean's notation parser, and a lightweight document preprocessor, without attempting to understand the semantics of the mathematical language.
 
@@ -79,7 +79,7 @@ The [untyped lambda calculus example](../example/untyped-lambda.tex) presents sy
 
 | Component      | Design                                       |
 | -------------- | -------------------------------------------- |
-| Input          | LaTeX source with Unicode environment bodies |
+| Input          | LaTeX environments and Pandoc JSON code blocks with shared Unicode bodies |
 | Rule structure | One premise per line                         |
 | Rule separator | Unicode horizontal line `────`               |
 | Rule names     | Written after the separator                  |
@@ -87,7 +87,7 @@ The [untyped lambda calculus example](../example/untyped-lambda.tex) presents sy
 | Block kinds    | Inference rules by default, or `kind=bnf` / `kind=equation` |
 | Expressions    | Extensible notation parser                   |
 | Notation       | Lean 4-inspired precedence and associativity |
-| Output         | LaTeX rule groups, grammar layouts, and aligned equations |
+| Output         | LaTeX today, with an HTML backend proposed |
 | Integration    | Pandoc JSON filter with native block attributes |
 | Implementation | Haskell library and standalone CLI via Stack |
 
@@ -97,7 +97,7 @@ A rule occupies a block of consecutive nonblank lines. Write zero or more premis
 
 The renderer uses `{ }` as the premise argument for an axiom so `mathpartir` draws the rule bar.
 
-Inside `inference-notation`, write one `notation:`, `infix:`, `infixl:`, or `infixr:` declaration per line. Whitespace before the colon is allowed. The parser collects and validates all declarations before parsing rule expressions, so a rule can use notation declared later in the document.
+Inside `inference-notation`, write one `notation:`, `infix:`, `infixl:`, or `infixr:` declaration per line, optionally followed by indented backend template clauses. Whitespace before the colon is allowed. The parser collects and validates all declarations before parsing rule expressions, so a rule can use notation declared later in the document.
 
 Source spans use one-based line and column coordinates with an exclusive end. Columns count Unicode code points, including tabs. Diagnostics report the offending token or a point at the end of the relevant line, along with both declaration spans when a notation use is ambiguous.
 
@@ -172,9 +172,20 @@ Precedences are nonnegative decimal integers. A hole specifies either a minimum 
 
 ### Rendering notation
 
-When a declaration omits `=>`, render its literal tokens and parsed hole arguments in pattern order. The LaTeX backend translates literal tokens and atom text through a character-keyed Unicode-to-LaTeX table, for example `→` to `\to` and `ι` to `\iota`. The parser retains Unicode in the expression AST as text. The table maps Unicode characters directly to LaTeX fragments. The renderer applies the usual escaping to unmapped text and adds grouping and spacing based on the expression structure. An explicit template overrides the default rendering for its notation.
+Attach an override to a notation with an indented clause of the form `backend => template`. Each clause occupies one line immediately below the declaration. Templates contain quoted backend fragments and references to the notation's holes.
 
-A possible replacement for inline templates is to give each notation a name and add separate declarations that associate that name with templates for individual backends. LaTeX, Typst, Haskell, Agda, and Lean could then each supply a rendering for the same notation. Keep notation identity and hole arguments in the AST so this can replace `=>` later. The declaration syntax for names and backend templates is open.
+```text
+notation:50 Γ:51 "⊢" e:51 ":" A:51
+  latex => Γ " \vdash " e " : " A
+  html => Γ "<mo>⊢</mo>" e "<mo>:</mo>" A
+  lean => "HasType " Γ " " e " " A
+```
+
+For backend clauses on infix declarations, use `lhs` and `rhs` for the two operands. The legacy inline `=>` still supplies a LaTeX template, with its existing operator-only shorthand for infix declarations. Allow at most one template per backend per notation. Report duplicate clauses, including a `latex =>` clause alongside an inline template, and unknown hole references at their source spans.
+
+LaTeX and HTML fall back to rendering literals and recursively rendered arguments in pattern order. LaTeX translates Unicode characters in atoms and literals through its character-keyed map, for example `→` to `\to` and `ι` to `\iota`. HTML uses Unicode in escaped MathML tokens. Each backend handles grouping and spacing. An explicit template replaces that backend's fallback for the notation.
+
+Other backends require an explicit template for each notation application they render. Report a missing mapping at the use site and include the notation's declaration location. Unused declarations may omit those mappings. The same clauses work in local declarations and imported modules.
 
 ### Notation tokens and atoms
 
@@ -184,6 +195,18 @@ Collect the notation declarations before tokenizing rule expressions. After trim
 - At a symbol or punctuation character, take the longest declared symbolic literal that matches. For example, `<=` wins over `<` when both are declared. If no literal matches, a single character in the Unicode Math Symbol category (`Sm`), such as `∅`, is an atom. Report a lexical error for characters that match none of these rules.
 
 Notation tokens enter expressions through their declared patterns. They are excluded from the atom positions used by application.
+
+### Standalone notation modules
+
+Allow a plain UTF-8 file to contain the same declarations as an `inference-notation` block, without environment delimiters. A module can also import other notation modules. For example, an `inference-notation` block in LaTeX, Markdown, or Org could contain the following directive.
+
+```text
+import "notation/stlc.notation"
+```
+
+The directive and file extension are proposed syntax. Resolve document imports relative to a configurable project directory, defaulting to the process working directory. This gives LaTeX stdin and Pandoc JSON the same behavior, since either input may arrive without a source filename. Resolve imports inside a module relative to that module's directory.
+
+All imported and local declarations share the document-wide notation scope. Load each resolved file once per document, including when several modules import it. Import order grants no precedence. Apply the same validation and ambiguity rules to imported and local patterns and report both declaration locations when relevant. Missing modules and import cycles produce diagnostics at the import directives, with the import chain for context. Imported declarations may carry backend templates under the same rules as local declarations.
 
 ### Application
 
@@ -249,19 +272,43 @@ The second pass also replaces each `inference` block with a `RawBlock` tagged `l
 
 Pass the document AST through unchanged for other targets or when the target argument is absent. On invalid JSON, an incompatible AST version, or a rule compilation error, report the failure on stderr and exit with a nonzero status. For rule diagnostics, include the block identifier or ordinal and the block-relative source span.
 
-## 5. Compiler architecture
+## 5. Reader, AST, and backend architecture
+
+Follow Pandoc's reader → AST → writer model at the level of the marked blocks. Pandoc or LaTeX owns the surrounding document. The inference compiler owns notation and the contents of the blocks it recognizes.
 
 ```text
-LaTeX source → Unchanged text segments and recognized source environments
-             → Validated notation and backend-independent ASTs
-             → LaTeX backend rewrites the recognized environments
+LaTeX environment reader ─┐
+                          ├→ Source blocks → Compiler → Inference document
+Pandoc JSON block reader ─┘                              ├→ LaTeX renderer
+                                                         ├→ HTML renderer
+                                                         └→ Language exporters (future)
 ```
 
-The library exposes pure parsing, compilation, and rendering entry points. The CLI supplies UTF-8 I/O and presents diagnostics. Source mode scans LaTeX for environments. Filter mode reads Pandoc code block attributes and passes their bodies to the same rule and notation parsers.
+### Readers and document assembly
 
-Scan only for the two source environments and preserve the surrounding LaTeX text in source order. Validate the document-wide notation table before parsing expressions. Refactor the compiler so inference rules, BNF groups, and equations have their own AST types. They share an expression AST with source spans, Unicode atom text, and notation applications with their identities and arguments. Inference rules retain premises, conclusions, and labels. BNF retains named groups and production rows. Equations retain both sides and optional guards.
+Each reader extracts the same ordered sequence of source blocks. A block carries a document-local key, its origin, and either a notation declaration body or a content body with attributes. The LaTeX reader recognizes the two environments and retains the intervening text for reinsertion. The Pandoc reader recognizes the two code block classes and keeps the enclosing Pandoc AST and metadata. Both hand raw body text and attributes to the same compiler. The existing `Inference.Blocks` input types are a starting point for this contract.
 
-LaTeX is the first backend. It consumes the three ASTs and uses backend-specific rendering data for templates, Unicode mappings, and layout. Keep this data separate from the syntax ASTs so other backends can render the same parsed structures.
+Use a key per occurrence to connect parsed sections, diagnostics, and rendered replacements to their source blocks. User-supplied identifiers can appear in diagnostics even if they are empty or repeated. A LaTeX origin maps body-relative spans back to file coordinates. A Pandoc origin records the identifier when present and the block ordinal, with spans relative to the code body. Related locations can point into a different block.
+
+Keep assembly in the host adapter. The LaTeX adapter reinserts LaTeX fragments and declaration comments into the original text. The Pandoc adapter inserts the backend's fragments as appropriately tagged Pandoc blocks and returns the transformed AST to Pandoc. Preserve the current behavior of passing unsupported Pandoc targets through unchanged. An explicit fragment export can render the same inference document from either input without carrying its host prose across formats.
+
+### Compiler and shared AST
+
+The pure compiler first parses and validates all notation declarations available to the document, then parses content blocks in order with the resulting notation table. This allows forward references in both inputs. A shared module loader resolves imports for either reader and supplies the compiler with loaded sources and their origins. Keep filesystem I/O in the loader so compilation can also run against in-memory module sources. Return the compiled document and separate backend configuration. The current `compileBlocks` combines parsing with renderer callbacks. Replace that dependency with a compilation result that can be rendered more than once.
+
+The inference document holds the notation definitions and ordered, keyed sections. Each section has an optional caption and a typed body for inference rules, BNF, or equations. The bodies share the expression AST for Unicode atoms, grouping, application, and notation applications identified by their notation and arguments. Retain source spans, BNF row boundaries, and equation guards. Delimiter locations, original declaration text for comments, and host document structure belong to the source layer.
+
+Store templates in backend configuration keyed by backend and notation identity. Normalize the optional inline `=>` clause to the LaTeX entry for compatibility. Separate declarations keyed by a notation name could populate the same configuration in the future. The syntax AST and notation resolution are shared across targets.
+
+### Backends
+
+| Backend | Output and responsibilities |
+| --- | --- |
+| LaTeX | Emit `mathpar` rule groups, BNF and equation layouts, and figure captions. Render Unicode atoms and notation literals with a character-keyed mapping, applying explicit LaTeX templates where supplied. |
+| HTML | Emit HTML fragments with MathML for expressions and rule structure, and use HTML for grouping and captions. Escape text and attributes, preserve BNF rows, and render notation in pattern order using its Unicode literals. Apply explicit HTML templates where supplied. |
+| Agda, Haskell, Lean | Treat each as a separate exporter. A first exporter can handle an explicitly supported subset with declared mappings. Generating declarations, constructors, or judgments requires additional information about categories, binding, and names. Validate those requirements in an export step and report unsupported constructs with source spans. |
+
+Let renderers consume the compiled document and their own configuration. For host replacement, render fragments keyed by section. Language exporters can inspect the whole document to emit imports or declarations once and order them by dependencies. Keep the entry points as ordinary Haskell functions until multiple backends demonstrate a need for a common interface.
 
 ## 6. Possible future extensions
 
@@ -273,9 +320,9 @@ Phase 2 — Pandoc integration
 
 JSON filter using `pandoc-types` and Pandoc's command-line filter protocol.
 
-Phase 3 — Richer notation
+Phase 3 — Shared compilation and HTML
 
-BNF and equation block layouts, imports, Unicode pretty-printing, and potentially HTML output.
+Compile BNF, equations, and inference rules through the same pipeline for both readers. Add HTML and MathML rendering and add per-notation backend overrides.
 
 Phase 4 — Structured metatheory
 

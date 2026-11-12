@@ -7,6 +7,7 @@ import Data.Text qualified as Text
 import Inference.AST
 import Inference.LaTeX.Templates (TemplatePart (..))
 import Inference.Parser
+import Inference.Templates (templatesFor)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase, (@?=))
 import Test.Tasty.QuickCheck (Positive (..), Property, chooseInt, counterexample, forAll, testProperty, (===))
@@ -136,14 +137,33 @@ declarationTests =
         (notations, templates) <- parsed input (parseNotationBlockWithLatexTemplates input)
         case notations of
           [notation] -> do
-            notationPattern notation @?= Hole "left" (AtLeast 61) :| [Literal "→", Hole "right" (AtLeast 60)]
-            Map.lookup (notationId notation) templates @?= Just (Reference "left" :| [Fragment " \\to ", Reference "right"])
+            notationPattern notation @?= Hole "lhs" (AtLeast 61) :| [Literal "→", Hole "rhs" (AtLeast 60)]
+            Map.lookup (notationId notation) templates @?= Just (Reference "lhs" :| [Fragment " \\to ", Reference "rhs"])
           other -> assertFailure ("Expected one notation, found " <> show other),
       testCase "quoted text supports literal quotes and backslashes" $ do
         let input = "notation:5 \"a\" => \"\\\"\\\\\""
         (notations, templates) <- parsed input (parseNotationBlockWithLatexTemplates input)
         map notationId notations @?= [NotationId 1]
         Map.elems templates @?= [Fragment "\"\\" :| []],
+      testCase "backend clauses retain independent templates and notation IDs" $ do
+        input <- readFixture "positive/backend-overrides"
+        (notations, templates) <- parsed input (parseNotationBlockWithTemplates input)
+        map notationId notations @?= [NotationId 1, NotationId 2]
+        Map.lookup (NotationId 1) (templatesFor "latex" templates)
+          @?= Just (Reference "Γ" :| [Fragment " \\vdash ", Reference "e", Fragment " : ", Reference "A"])
+        Map.lookup (NotationId 1) (templatesFor "html" templates)
+          @?= Just (Reference "Γ" :| [Fragment "<mo>⊢</mo>", Reference "e", Fragment "<mo>:</mo>", Reference "A"])
+        Map.lookup (NotationId 2) (templatesFor "lean" templates)
+          @?= Just (Fragment "Arrow " :| [Reference "lhs", Fragment " ", Reference "rhs"])
+        Map.lookup (NotationId 2) (templatesFor "latex" templates) @?= Nothing,
+      testCase "duplicate backends highlight the repeated backend name" $ do
+        fixtureFailure parseNotationBlock "duplicate-backend" DuplicateTemplate (at 2 3 8)
+        failsWith (parseNotationBlock "notation:5 \"a\"\n  html => \"a\"\n  html => \"b\"") DuplicateTemplate (at 3 3 7),
+      testCase "invalid and misplaced clauses retain source coordinates" $ do
+        failsWith (parseNotationBlock "infixr:60 \"→\"\r\n\thtml => \"⊢\" missing") InvalidTemplateReference (at 2 14 21)
+        failsWith (parseNotationBlock "notation:5 \"a\"\n  html =>") MalformedDeclaration (at 2 10 10)
+        failsWith (parseNotationBlock "notation:5 \"a\"\nhtml => \"b\"") MisplacedTemplate (at 2 1 12)
+        failsWith (parseNotationBlock "notation:5 \"a\"\n\n  html => \"b\"") MisplacedTemplate (at 3 3 14),
       testCase "invalid patterns" $ do
         failsWith (parseNotationBlock "notation:5 x:0 y:0 => x") InvalidPattern (at 1 16 19)
         failsWith (parseNotationBlock "notation:5 x:0 \"+\" x:0 => x") InvalidPattern (at 1 20 23)

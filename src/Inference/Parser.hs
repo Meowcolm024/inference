@@ -1,8 +1,10 @@
 module Inference.Parser
   ( parseSource,
     parseSourceWithLatexTemplates,
+    parseSourceWithTemplates,
     parseNotationBlock,
     parseNotationBlockWithLatexTemplates,
+    parseNotationBlockWithTemplates,
     parseRuleSection,
     parseBlockSection,
     parseBlockAttributes,
@@ -29,6 +31,7 @@ import Inference.Parser.Expression (parseExpression)
 import Inference.Parser.Notation (NotationTable, buildNotationTable, isDeclaration, parseNotation)
 import Inference.Parser.Options (parseBlockAttributes)
 import Inference.Parser.Source
+import Inference.Templates (BackendTemplates, templatesFor)
 import Text.Megaparsec (Parsec, bundleErrors, eof, errorOffset, notFollowedBy, runParser, takeWhileP, (<|>))
 import Text.Megaparsec.Char (eol)
 
@@ -36,13 +39,16 @@ data RawRule = RawRule SourceSpan (Maybe Text) [Located Text] (Located Text)
 
 -- Delimiter and body spans refer to the original document, including LaTeX.
 parseSource :: Text -> Either Diagnostic SourceDocument
-parseSource = fmap fst . parseSourceWithLatexTemplates
+parseSource = fmap fst . parseSourceWithTemplates
 
 parseSourceWithLatexTemplates :: Text -> Either Diagnostic (SourceDocument, LatexTemplates)
-parseSourceWithLatexTemplates input = do
+parseSourceWithLatexTemplates input = fmap (fmap (templatesFor "latex")) (parseSourceWithTemplates input)
+
+parseSourceWithTemplates :: Text -> Either Diagnostic (SourceDocument, BackendTemplates)
+parseSourceWithTemplates input = do
   chunks <- scanEnvironments input
   declarations <- traverse (uncurry bodyLines) [(markers, body) | RawNotation markers body <- chunks]
-  (notations, templates) <- parseDeclarations (nonblankLines (concat declarations))
+  (notations, templates) <- parseDeclarations (concat declarations)
   let table = buildNotationTable notations
   parsed <- traverse (parseChunk table) chunks
   pure (SourceDocument notations parsed, templates)
@@ -55,19 +61,50 @@ parseSourceWithLatexTemplates input = do
       pure (RuleSetSource (Section (optionsTitle options) (Just markers) parsed))
 
 parseNotationBlock :: Text -> Either Diagnostic [Notation]
-parseNotationBlock = fmap fst . parseNotationBlockWithLatexTemplates
+parseNotationBlock = fmap fst . parseNotationBlockWithTemplates
 
 parseNotationBlockWithLatexTemplates :: Text -> Either Diagnostic ([Notation], LatexTemplates)
-parseNotationBlockWithLatexTemplates input = sourceLines input >>= parseDeclarations . nonblankLines
+parseNotationBlockWithLatexTemplates input =
+  fmap (fmap (templatesFor "latex")) (parseNotationBlockWithTemplates input)
 
-nonblankLines :: [Located Text] -> [Located Text]
-nonblankLines = filter (not . Text.null . locatedValue)
+parseNotationBlockWithTemplates :: Text -> Either Diagnostic ([Notation], BackendTemplates)
+parseNotationBlockWithTemplates input = sourceLines input >>= parseDeclarations
 
-parseDeclarations :: [Located Text] -> Either Diagnostic ([Notation], LatexTemplates)
+parseDeclarations :: [Located Text] -> Either Diagnostic ([Notation], BackendTemplates)
 parseDeclarations lines' = do
-  declarations <- traverse (uncurry parseNotation) (zip (map NotationId [1 ..]) lines')
-  let templates = Map.fromList [(notationId notation, template) | (notation, Just template) <- declarations]
+  declarations <- collect 1 lines'
+  let templates =
+        Map.fromListWith
+          Map.union
+          [ (backend, Map.singleton (notationId notation) parts)
+          | (notation, overrides) <- declarations,
+            (backend, parts) <- Map.toList overrides
+          ]
   pure (map fst declarations, templates)
+  where
+    collect _ [] = Right []
+    collect nextId (line : rest)
+      | Text.null (locatedValue line) = collect nextId rest
+      | isTemplateLine line =
+          Left (Diagnostic MisplacedTemplate (location line) "Indent backend template clauses immediately below their notation declaration." [])
+      | otherwise = do
+          let (clauses, remaining) = collectClauses (position line) rest
+          declaration <- parseNotation (NotationId nextId) line clauses
+          (declaration :) <$> collect (nextId + 1) remaining
+    position = spanStart . location
+    isTemplateLine line =
+      let (name, suffix) = Text.span identifierContinue (locatedValue line)
+       in not (Text.null name) && "=>" `Text.isPrefixOf` Text.stripStart suffix
+    collectClauses declaration = go (sourceLine declaration + 1)
+      where
+        go expected (line : rest)
+          | let start = position line,
+            sourceLine start == expected,
+            sourceColumn start > sourceColumn declaration,
+            not (Text.null (locatedValue line) || isDeclaration (locatedValue line)) =
+              let (clauses, remaining) = go (expected + 1) rest
+               in (line : clauses, remaining)
+        go _ remaining = ([], remaining)
 
 -- The caller supplies the section boundary and the document-wide notation.
 parseRuleSection :: [Notation] -> Maybe Text -> Text -> Either Diagnostic Section

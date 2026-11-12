@@ -36,6 +36,17 @@ latexTests =
         explicitOutput <- parsed explicit (compileSource explicit)
         assertBool "spaces the postfix literal in the default layout" (Text.isInfixOf "{\\iota\\to A\\,term}" defaultOutput)
         assertBool "uses both explicit templates" (Text.isInfixOf "{\\mathsf{term}(\\iota\\Rightarrow A)}" explicitOutput),
+      testCase "LaTeX uses its own override and falls back when only HTML is configured" $ do
+        let input =
+              oneRule
+                [ "infixr:60 \"→\"",
+                  "  html => lhs \"<mo>→</mo>\" rhs",
+                  "notation:10 e:11 \"term\"",
+                  "  latex => \"\\mathsf{term}(\" e \")\""
+                ]
+                "ι → A term"
+        output <- parsed input (compileSource input)
+        assertBool "renders without a Lean override" (Text.isInfixOf "{\\mathsf{term}(\\iota\\to A)}" output),
       testCase "an unresolved notation in a constructed AST reports a diagnostic" $ do
         document <- parsedSource (oneRule ["infixr:60 \"→\" => \"\\to\""] "A → B")
         case renderLatex mempty (Document [] (sourceSections document)) of

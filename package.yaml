@@ -58,9 +58,11 @@ library:
   source-dirs: src
   exposed-modules:
   - Inference.AST
+  - Inference.Blocks
   - Inference.LaTeX
   - Inference.LaTeX.Templates
   - Inference.Parser
+  - Inference.Templates
   other-modules:
   - Inference.LaTeX.Unicode
   - Inference.Parser.Body

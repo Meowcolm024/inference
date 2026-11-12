@@ -22,8 +22,8 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
 import Inference.AST
-import Inference.LaTeX.Templates (TemplatePart (..))
 import Inference.Parser.Source
+import Inference.Templates (TemplatePart (..))
 import Text.Megaparsec (Parsec, choice, eof, errorOffset, getOffset, lookAhead, manyTill, runParser, satisfy, takeWhileP, try, (<|>))
 import Text.Megaparsec qualified as Megaparsec
 import Text.Megaparsec.Char (char, string)
@@ -44,21 +44,43 @@ isDeclaration line =
 
 type Parser = Parsec Void Text
 
-parseNotation :: NotationId -> Located Text -> Either Diagnostic (Notation, Maybe (NonEmpty TemplatePart))
-parseNotation identity (Located source text) = do
-  (precedence, patternParts, template) <-
-    case runParser (declaration (spanStart source) <* eof) "declaration" text of
-      Right result -> Right result
-      Left bundle ->
-        let parseError = NonEmpty.head (Megaparsec.bundleErrors bundle)
-            offset = errorOffset parseError
-            width = if offset < Text.length text then 1 else 0
-            problem = lineSpan (spanStart source) offset width
-            message = Text.strip (Text.pack (Megaparsec.parseErrorTextPretty parseError))
-         in Left (Diagnostic MalformedDeclaration problem message [])
+parseNotation :: NotationId -> Located Text -> [Located Text] -> Either Diagnostic (Notation, Map Text (NonEmpty TemplatePart))
+parseNotation identity line clauses = do
+  let source = location line
+  (precedence, patternParts, inline) <- parseLine declaration line
   holes <- validatePattern source patternParts
-  traverse_ (traverse_ (validateReference holes)) template
-  pure (Notation identity source precedence (fmap locatedValue patternParts), fmap (fmap locatedValue) template)
+  traverse_ (traverse_ (validateReference holes)) inline
+  let initial = maybe Map.empty (Map.singleton "latex" . fmap locatedValue) inline
+  templates <- foldM (addClause holes) initial clauses
+  pure (Notation identity source precedence (fmap locatedValue patternParts), templates)
+
+addClause :: Set Text -> Map Text (NonEmpty TemplatePart) -> Located Text -> Either Diagnostic (Map Text (NonEmpty TemplatePart))
+addClause holes templates line = do
+  (backend, parts) <- parseLine clause line
+  let name = locatedValue backend
+  if Map.member name templates
+    then Left (Diagnostic DuplicateTemplate (location backend) ("Duplicate template for backend ‘" <> name <> "’.") [])
+    else do
+      traverse_ (validateReference holes) parts
+      pure (Map.insert name (fmap locatedValue parts) templates)
+  where
+    clause start = do
+      backend <- located start identifier
+      void (symbol "=>")
+      parts <- template start
+      pure (backend, parts)
+
+parseLine :: (SourcePosition -> Parser a) -> Located Text -> Either Diagnostic a
+parseLine parser (Located source text) =
+  case runParser (parser (spanStart source) <* eof) "declaration" text of
+    Right result -> Right result
+    Left bundle ->
+      let parseError = NonEmpty.head (Megaparsec.bundleErrors bundle)
+          offset = errorOffset parseError
+          width = if offset < Text.length text then 1 else 0
+          problem = lineSpan (spanStart source) offset width
+          message = Text.strip (Text.pack (Megaparsec.parseErrorTextPretty parseError))
+       in Left (Diagnostic MalformedDeclaration problem message [])
 
 declaration :: SourcePosition -> Parser (Integer, NonEmpty (Located PatternPart), Maybe (NonEmpty (Located TemplatePart)))
 declaration start = do
@@ -66,41 +88,46 @@ declaration start = do
   spacing
   void (symbol ":")
   precedence <- lexeme Lexer.decimal
-  (patternParts, template) <- case style of
+  (patternParts, inline) <- case style of
     Mixfix -> do
       first <- patternPart
       rest <- manyTill patternPart (lookAhead (void (string "=>") <|> eof))
-      parts <- optional (symbol "=>" *> ((:|) <$> templatePart <*> manyTill templatePart eof))
+      parts <- optional (symbol "=>" *> template start)
       pure (first :| rest, parts)
     Infix associativity -> do
-      literal <- located (Literal <$> quoted)
-      fragment <- optional (symbol "=>" *> located (Fragment <$> quoted))
+      literal <- located start (Literal <$> quoted)
+      fragment <- optional (symbol "=>" *> located start (Fragment <$> quoted))
       let (left, right) = case associativity of
             LeftAssociative -> (precedence, precedence + 1)
             RightAssociative -> (precedence + 1, precedence)
             NonAssociative -> (precedence + 1, precedence + 1)
           source = location literal
-          patternParts = Located source (Hole "left" (AtLeast left)) :| [literal, Located source (Hole "right" (AtLeast right))]
-          template part = Located source (Reference "left") :| [part, Located source (Reference "right")]
-      pure (patternParts, fmap template fragment)
-  pure (precedence, fmap (fmap trimLiteral) patternParts, template)
+          patternParts = Located source (Hole "lhs" (AtLeast left)) :| [literal, Located source (Hole "rhs" (AtLeast right))]
+          infixTemplate part = Located source (Reference "lhs") :| [part, Located source (Reference "rhs")]
+      pure (patternParts, fmap infixTemplate fragment)
+  pure (precedence, fmap (fmap trimLiteral) patternParts, inline)
   where
-    located :: Parser a -> Parser (Located a)
-    located parser = do
-      begin <- getOffset
-      value <- parser
-      end <- getOffset
-      spacing
-      pure (Located (lineSpan start begin (end - begin)) value)
-    patternPart = located ((Literal <$> quoted) <|> hole)
+    patternPart = located start ((Literal <$> quoted) <|> hole)
     hole = do
       name <- lexeme identifier
       void (symbol ":")
       precedence <- (AtomOnly <$ string "atom") <|> (AtLeast <$> Lexer.decimal)
       pure (Hole name precedence)
-    templatePart = located ((Fragment <$> quoted) <|> (Reference <$> identifier))
     trimLiteral (Literal literal) = Literal (Text.strip literal)
     trimLiteral part = part
+
+template :: SourcePosition -> Parser (NonEmpty (Located TemplatePart))
+template start = (:|) <$> part <*> manyTill part eof
+  where
+    part = located start ((Fragment <$> quoted) <|> (Reference <$> identifier))
+
+located :: SourcePosition -> Parser a -> Parser (Located a)
+located start parser = do
+  begin <- getOffset
+  value <- parser
+  end <- getOffset
+  spacing
+  pure (Located (lineSpan start begin (end - begin)) value)
 
 identifier :: Parser Text
 identifier = Text.cons <$> satisfy identifierStart <*> takeWhileP Nothing identifierContinue

@@ -1,29 +1,18 @@
 module Inference.Pandoc (runFilter, compileDocument) where
 
 import Control.Exception (ErrorCall (..), Handler (..), IOException, catches)
-import Control.Monad.Trans.State.Strict (StateT (..), evalStateT)
-import Data.IntMap.Strict (IntMap)
-import Data.IntMap.Strict qualified as IntMap
-import Data.List (mapAccumL)
+import Control.Monad.Trans.State.Strict (State, evalState, state)
 import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
-import Inference.AST (Document (..), SourcePosition (..), SourceSpan (..))
+import Inference.Blocks (BlockCompilationError (..), BlockDiagnostic (..), InferenceBlock (..), InferenceBlockKind (..), compileBlocks)
 import Inference.LaTeX (renderLatex)
-import Inference.Parser (Diagnostic (..), formatDiagnostic, parseBlockAttributes, parseBlockSection, parseNotationBlockWithLatexTemplates)
+import Inference.Parser (formatDiagnostic)
 import System.Exit (die, exitFailure)
 import System.IO (hSetBinaryMode, hSetEncoding, stderr, stdin, stdout, utf8)
 import Text.Pandoc.JSON (Block (..), Format (..), Pandoc (..), toJSONFilter)
 import Text.Pandoc.Walk (query, walkM)
-
-data BlockKind = NotationBlock | RuleBlock [(Text, Text)]
-
-data InferenceBlock = InferenceBlock
-  { blockId :: Text,
-    blockKind :: BlockKind,
-    blockSource :: Text
-  }
 
 runFilter :: Maybe String -> IO ()
 runFilter target = do
@@ -43,26 +32,14 @@ filterDocument (Just (Format "latex")) document =
 filterDocument _ document = pure document
 
 compileDocument :: Pandoc -> Either Text Pandoc
-compileDocument (Pandoc metadata blocks) = do
-  let annotated = query (maybeToList . inferenceBlock) blocks
-      declarations = [(ordinal, block) | (ordinal, block@InferenceBlock {blockKind = NotationBlock}) <- zip [1 ..] annotated]
-      -- A full separator keeps a trailing lone CR in a block invalid.
-      source = Text.concat [blockSource block <> "\r\n" | (_, block) <- declarations]
-      origins = IntMap.fromDistinctAscList (snd (mapAccumL indexBlock 1 declarations))
-  (notations, templates) <- case parseNotationBlockWithLatexTemplates source of
-    Left diagnostic -> Left (formatNotationDiagnostic origins diagnostic)
-    Right parsed -> Right parsed
-  let render ordinal block = case blockKind block of
-        NotationBlock -> Right (rawLatex (Text.unlines (map ("% " <>) (Text.lines (blockSource block)))))
-        RuleBlock attributes -> case parseBlockAttributes attributes >>= \options -> parseBlockSection notations options (blockSource block) >>= \section -> renderLatex templates (Document notations [section]) of
-          Left diagnostic ->
-            let related sourceSpan = formatNotationDiagnostic origins diagnostic {diagnosticSpan = sourceSpan, diagnosticMessage = "Competing notation declared here."}
-             in Left (formatBlockDiagnostic ordinal block diagnostic <> foldMap related (diagnosticRelated diagnostic))
-          Right latex -> Right (rawLatex latex)
-  Pandoc metadata <$> evalStateT (walkM (replaceBlock render) blocks) 1
+compileDocument (Pandoc metadata blocks) =
+  case compileBlocks renderDeclaration renderRules (query (maybeToList . inferenceBlock) blocks) of
+    Left failure -> Left (formatCompilationError failure)
+    Right rendered -> Right (Pandoc metadata (evalState (walkM replaceBlock blocks) rendered))
   where
     rawLatex = RawBlock (Format "latex")
-    indexBlock line entry@(_, block) = (line + Text.count "\n" (blockSource block) + 1, (line, entry))
+    renderDeclaration = rawLatex . Text.unlines . map ("% " <>) . Text.lines
+    renderRules templates document = rawLatex <$> renderLatex templates document
 
 inferenceBlock :: Block -> Maybe InferenceBlock
 inferenceBlock (CodeBlock (identifier, classes, attributes) source)
@@ -70,26 +47,22 @@ inferenceBlock (CodeBlock (identifier, classes, attributes) source)
   | "inference" `elem` classes = Just (InferenceBlock identifier (RuleBlock attributes) source)
 inferenceBlock _ = Nothing
 
-replaceBlock :: (Int -> InferenceBlock -> Either Text Block) -> Block -> StateT Int (Either Text) Block
-replaceBlock render block = case inferenceBlock block of
-  Nothing -> pure block
-  Just input -> StateT $ \ordinal -> (,ordinal + 1) <$> render ordinal input
+replaceBlock :: Block -> State [Block] Block
+replaceBlock block = state $ \rendered ->
+  case (inferenceBlock block, rendered) of
+    (Just _, replacement : rest) -> (replacement, rest)
+    _ -> (block, rendered)
 
-formatBlockDiagnostic :: Int -> InferenceBlock -> Diagnostic -> Text
-formatBlockDiagnostic ordinal block diagnostic =
-  reference <> ":" <> formatDiagnostic (blockSource block) diagnostic {diagnosticRelated = []}
+formatCompilationError :: BlockCompilationError -> Text
+formatCompilationError failure =
+  formatBlockDiagnostic (compilationDiagnostic failure)
+    <> foldMap formatBlockDiagnostic (compilationRelated failure)
+
+formatBlockDiagnostic :: BlockDiagnostic -> Text
+formatBlockDiagnostic (BlockDiagnostic Nothing diagnostic) = formatDiagnostic "" diagnostic
+formatBlockDiagnostic (BlockDiagnostic (Just (ordinal, block)) diagnostic) =
+  reference <> ":" <> formatDiagnostic (blockSource block) diagnostic
   where
     reference
       | Text.null (blockId block) = "inference block " <> Text.pack (show ordinal)
       | otherwise = "inference block #" <> blockId block
-
-formatNotationDiagnostic :: IntMap (Int, InferenceBlock) -> Diagnostic -> Text
-formatNotationDiagnostic origins diagnostic =
-  case IntMap.lookupLE (sourceLine (spanStart source)) origins of
-    Just (firstLine, (ordinal, block)) ->
-      let relative position = position {sourceLine = sourceLine position - firstLine + 1}
-          localSpan = SourceSpan (relative (spanStart source)) (relative (spanEnd source))
-       in formatBlockDiagnostic ordinal block diagnostic {diagnosticSpan = localSpan}
-    Nothing -> formatDiagnostic "" diagnostic
-  where
-    source = diagnosticSpan diagnostic

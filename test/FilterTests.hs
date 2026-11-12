@@ -37,6 +37,17 @@ filterTests =
             assertBool "defaults to inference rules" (Text.isInfixOf "\\inferrule" rule)
             assertBool "keeps notation comments" (Text.isPrefixOf "% infixr" declaration)
           other -> assertFailure (show other),
+      testCase "notation clauses cannot attach across Pandoc blocks" $ do
+        let input =
+              Pandoc
+                nullMeta
+                [ CodeBlock ("first", ["inference-notation"], []) "notation:5 \"a\"",
+                  CodeBlock ("orphan", ["inference-notation"], []) "  latex => \"b\""
+                ]
+        case compileDocument input of
+          Left diagnostic ->
+            assertBool "identifies the orphan clause" (Text.isPrefixOf "inference block #orphan:1:3:" diagnostic)
+          Right _ -> assertFailure "Expected a misplaced template diagnostic.",
       testCase "kind errors include the Pandoc block identity" $ do
         let input = Pandoc nullMeta [CodeBlock ("bad", ["inference"], [("kind", "unknown")]) "x"]
         case compileDocument input of
@@ -46,5 +57,19 @@ filterTests =
         let input = Pandoc nullMeta [CodeBlock ("", ["inference"], [("kind", "equation")]) "x = y\n--- Bad"]
         case compileDocument input of
           Left diagnostic -> assertBool "reports the row and column" (Text.isPrefixOf "inference block 1:2:1:" diagnostic)
-          Right _ -> assertFailure "Expected an equation diagnostic."
+          Right _ -> assertFailure "Expected an equation diagnostic.",
+      testCase "ambiguity identifies competing declarations in separate blocks" $ do
+        let input =
+              Pandoc
+                nullMeta
+                [ CodeBlock ("rule", ["inference"], []) "────\nA → B → C",
+                  BlockQuote [CodeBlock ("left", ["inference-notation"], []) "\ninfixl:60 \"→\""],
+                  CodeBlock ("right", ["inference-notation"], []) "infixr:60 \"→\""
+                ]
+        case compileDocument input of
+          Left diagnostic -> do
+            assertBool "locates the ambiguous rule" (Text.isPrefixOf "inference block #rule:2:" diagnostic)
+            assertBool "locates the nested declaration" (Text.isInfixOf "inference block #left:2:1: Competing notation declared here." diagnostic)
+            assertBool "locates the later declaration" (Text.isInfixOf "inference block #right:1:1: Competing notation declared here." diagnostic)
+          Right _ -> assertFailure "Expected an ambiguity diagnostic."
     ]

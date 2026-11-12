@@ -34,6 +34,8 @@ data DiagnosticKind
   | ExpectedBlankLine
   | MalformedDeclaration
   | InvalidPattern
+  | MisplacedTemplate
+  | DuplicateTemplate
   | InvalidTemplateReference
   | InvalidToken
   | ExpectedExpression

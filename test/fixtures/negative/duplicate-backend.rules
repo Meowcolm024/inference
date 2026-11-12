@@ -1,0 +1,2 @@
+infixr:60 "→" => "\to"
+  latex => lhs "\Rightarrow " rhs
