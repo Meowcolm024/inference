@@ -2,17 +2,21 @@
 \[
 \begin{array}{l}
 \mbox{Types \#\_\%} \\
-A,B \mathrel{::=} \iota \mid A\to B \mid X \\
-\hspace{12em}\forall X.\,A \\
+\begin{array}{rcl}
+A,B & ::= & \iota \mid A\to B \mid X \\
+ & & \forall X.A
+\end{array} \\
 {} \\
 \mbox{Contexts} \\
-\Gamma \mathrel{::=} \emptyset \mid \Gamma,x:A
+\begin{array}{rcl}
+\Gamma & ::= & \emptyset \mid \Gamma,x:A
+\end{array}
 \end{array}
 \]
 \caption{Types, contexts}
 \end{figure}
 
-% infixr:60 "→" => "\to"
-% infix:55 ":" => ":"
-% infixl:52 "," => ","
-% notation:56 "∀" X:atom "." A:56 => "\forall " X ".\," A
+% infixr:60 "→"
+% infix:55 ":"
+% infixl:52 ","
+% notation:56 "∀" X:atom "." A:56

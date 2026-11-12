@@ -20,9 +20,9 @@ filterTests =
                 metadata
                 [ before,
                   CodeBlock ("syntax", ["inference"], [("kind", "bnf"), ("rule_set", "Types")]) "--- Types\nA ::= X | X → X",
-                  CodeBlock ("equation", ["inference"], [("kind", "\"equation\"")]) "x = y",
+                  CodeBlock ("equation", ["inference"], [("kind", "\"equation\"")]) "ι = y -- if x ≠ y",
                   CodeBlock ("", ["inference"], []) "─\nx",
-                  CodeBlock ("", ["inference-notation"], []) "infixr:60 \"→\" => \"\\\\to\"",
+                  CodeBlock ("", ["inference-notation"], []) "infixr:60 \"→\"\ninfix:53 \"≠\" => \"\\ne\"",
                   after
                 ]
         case compileDocument input of
@@ -33,7 +33,7 @@ filterTests =
             firstFormat @?= Format "latex"
             secondFormat @?= Format "latex"
             assertBool "renders BNF with its caption and forward arrow" (Text.isInfixOf "\\begin{array}{l}" bnf && Text.isInfixOf "\\caption{Types}" bnf && Text.isInfixOf "\\to" bnf)
-            assertBool "renders equation equality" (Text.isInfixOf "x & = & y" equation)
+            assertBool "renders the equation with its explicit guard template" (Text.isInfixOf "\\iota & = & y & \\mbox{if}\\;x\\ne y" equation)
             assertBool "defaults to inference rules" (Text.isInfixOf "\\inferrule" rule)
             assertBool "keeps notation comments" (Text.isPrefixOf "% infixr" declaration)
           other -> assertFailure (show other),

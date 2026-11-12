@@ -8,8 +8,8 @@ A,B ::= ι | A → B | X
 \end{inference}
 
 \begin{inference-notation}
-infixr:60 "→" => "\to"
-infix:55 ":" => ":"
-infixl:52 "," => ","
-notation:56 "∀" X:atom "." A:56 => "\forall " X ".\," A
+infixr:60 "→"
+infix:55 ":"
+infixl:52 ","
+notation:56 "∀" X:atom "." A:56
 \end{inference-notation}

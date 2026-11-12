@@ -1,6 +1,8 @@
 module Inference.Parser
   ( parseSource,
+    parseSourceWithLatexTemplates,
     parseNotationBlock,
+    parseNotationBlockWithLatexTemplates,
     parseRuleSection,
     parseBlockSection,
     parseBlockAttributes,
@@ -15,10 +17,12 @@ import Control.Monad (void)
 import Data.Char (isSpace)
 import Data.Foldable (traverse_)
 import Data.List.NonEmpty qualified as NonEmpty
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
 import Inference.AST
+import Inference.LaTeX.Templates (LatexTemplates)
 import Inference.Parser.Body (parseBnf, parseEquations)
 import Inference.Parser.Environment (RawChunk (..), scanEnvironments)
 import Inference.Parser.Expression (parseExpression)
@@ -32,13 +36,16 @@ data RawRule = RawRule SourceSpan (Maybe Text) [Located Text] (Located Text)
 
 -- Delimiter and body spans refer to the original document, including LaTeX.
 parseSource :: Text -> Either Diagnostic SourceDocument
-parseSource input = do
+parseSource = fmap fst . parseSourceWithLatexTemplates
+
+parseSourceWithLatexTemplates :: Text -> Either Diagnostic (SourceDocument, LatexTemplates)
+parseSourceWithLatexTemplates input = do
   chunks <- scanEnvironments input
   declarations <- traverse (uncurry bodyLines) [(markers, body) | RawNotation markers body <- chunks]
-  notations <- parseDeclarations (nonblankLines (concat declarations))
+  (notations, templates) <- parseDeclarations (nonblankLines (concat declarations))
   let table = buildNotationTable notations
   parsed <- traverse (parseChunk table) chunks
-  pure (SourceDocument notations parsed)
+  pure (SourceDocument notations parsed, templates)
   where
     bodyLines markers = sourceLinesAt (sourceLine (spanStart (sectionBeginSpan markers)) + 1)
     parseChunk _ (RawLatex latex) = Right (LatexText latex)
@@ -48,13 +55,19 @@ parseSource input = do
       pure (RuleSetSource (Section (optionsTitle options) (Just markers) parsed))
 
 parseNotationBlock :: Text -> Either Diagnostic [Notation]
-parseNotationBlock input = sourceLines input >>= parseDeclarations . nonblankLines
+parseNotationBlock = fmap fst . parseNotationBlockWithLatexTemplates
+
+parseNotationBlockWithLatexTemplates :: Text -> Either Diagnostic ([Notation], LatexTemplates)
+parseNotationBlockWithLatexTemplates input = sourceLines input >>= parseDeclarations . nonblankLines
 
 nonblankLines :: [Located Text] -> [Located Text]
 nonblankLines = filter (not . Text.null . locatedValue)
 
-parseDeclarations :: [Located Text] -> Either Diagnostic [Notation]
-parseDeclarations = traverse (uncurry parseNotation) . zip (map NotationId [1 ..])
+parseDeclarations :: [Located Text] -> Either Diagnostic ([Notation], LatexTemplates)
+parseDeclarations lines' = do
+  declarations <- traverse (uncurry parseNotation) (zip (map NotationId [1 ..]) lines')
+  let templates = Map.fromList [(notationId notation, template) | (notation, Just template) <- declarations]
+  pure (map fst declarations, templates)
 
 -- The caller supplies the section boundary and the document-wide notation.
 parseRuleSection :: [Notation] -> Maybe Text -> Text -> Either Diagnostic Section

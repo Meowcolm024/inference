@@ -6,6 +6,7 @@ module Inference.Parser.Notation
   )
 where
 
+import Control.Applicative (optional)
 import Control.Monad (foldM, void)
 import Data.Char (isSpace)
 import Data.Foldable (traverse_)
@@ -21,8 +22,9 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
 import Inference.AST
+import Inference.LaTeX.Templates (TemplatePart (..))
 import Inference.Parser.Source
-import Text.Megaparsec (Parsec, choice, eof, errorOffset, getOffset, manyTill, runParser, satisfy, takeWhileP, try, (<|>))
+import Text.Megaparsec (Parsec, choice, eof, errorOffset, getOffset, lookAhead, manyTill, runParser, satisfy, takeWhileP, try, (<|>))
 import Text.Megaparsec qualified as Megaparsec
 import Text.Megaparsec.Char (char, string)
 import Text.Megaparsec.Char.Lexer qualified as Lexer
@@ -42,7 +44,7 @@ isDeclaration line =
 
 type Parser = Parsec Void Text
 
-parseNotation :: NotationId -> Located Text -> Either Diagnostic Notation
+parseNotation :: NotationId -> Located Text -> Either Diagnostic (Notation, Maybe (NonEmpty TemplatePart))
 parseNotation identity (Located source text) = do
   (precedence, patternParts, template) <-
     case runParser (declaration (spanStart source) <* eof) "declaration" text of
@@ -55,10 +57,10 @@ parseNotation identity (Located source text) = do
             message = Text.strip (Text.pack (Megaparsec.parseErrorTextPretty parseError))
          in Left (Diagnostic MalformedDeclaration problem message [])
   holes <- validatePattern source patternParts
-  traverse_ (validateReference holes) template
-  pure (Notation identity source precedence (fmap locatedValue patternParts) (fmap locatedValue template))
+  traverse_ (traverse_ (validateReference holes)) template
+  pure (Notation identity source precedence (fmap locatedValue patternParts), fmap (fmap locatedValue) template)
 
-declaration :: SourcePosition -> Parser (Integer, NonEmpty (Located PatternPart), NonEmpty (Located TemplatePart))
+declaration :: SourcePosition -> Parser (Integer, NonEmpty (Located PatternPart), Maybe (NonEmpty (Located TemplatePart)))
 declaration start = do
   style <- choice [result <$ string name | (name, result) <- declarationStyles]
   spacing
@@ -67,21 +69,20 @@ declaration start = do
   (patternParts, template) <- case style of
     Mixfix -> do
       first <- patternPart
-      rest <- manyTill patternPart (symbol "=>")
-      parts <- (:|) <$> templatePart <*> manyTill templatePart eof
+      rest <- manyTill patternPart (lookAhead (void (string "=>") <|> eof))
+      parts <- optional (symbol "=>" *> ((:|) <$> templatePart <*> manyTill templatePart eof))
       pure (first :| rest, parts)
     Infix associativity -> do
       literal <- located (Literal <$> quoted)
-      void (symbol "=>")
-      fragment <- located (Fragment <$> quoted)
+      fragment <- optional (symbol "=>" *> located (Fragment <$> quoted))
       let (left, right) = case associativity of
             LeftAssociative -> (precedence, precedence + 1)
             RightAssociative -> (precedence + 1, precedence)
             NonAssociative -> (precedence + 1, precedence + 1)
           source = location literal
           patternParts = Located source (Hole "left" (AtLeast left)) :| [literal, Located source (Hole "right" (AtLeast right))]
-          template = Located source (Reference "left") :| [fragment, Located source (Reference "right")]
-      pure (patternParts, template)
+          template part = Located source (Reference "left") :| [part, Located source (Reference "right")]
+      pure (patternParts, fmap template fragment)
   pure (precedence, fmap (fmap trimLiteral) patternParts, template)
   where
     located :: Parser a -> Parser (Located a)

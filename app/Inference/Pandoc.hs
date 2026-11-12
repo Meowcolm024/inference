@@ -11,7 +11,7 @@ import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
 import Inference.AST (Document (..), SourcePosition (..), SourceSpan (..))
 import Inference.LaTeX (renderLatex)
-import Inference.Parser (Diagnostic (..), formatDiagnostic, parseBlockAttributes, parseBlockSection, parseNotationBlock)
+import Inference.Parser (Diagnostic (..), formatDiagnostic, parseBlockAttributes, parseBlockSection, parseNotationBlockWithLatexTemplates)
 import System.Exit (die, exitFailure)
 import System.IO (hSetBinaryMode, hSetEncoding, stderr, stdin, stdout, utf8)
 import Text.Pandoc.JSON (Block (..), Format (..), Pandoc (..), toJSONFilter)
@@ -49,12 +49,12 @@ compileDocument (Pandoc metadata blocks) = do
       -- A full separator keeps a trailing lone CR in a block invalid.
       source = Text.concat [blockSource block <> "\r\n" | (_, block) <- declarations]
       origins = IntMap.fromDistinctAscList (snd (mapAccumL indexBlock 1 declarations))
-  notations <- case parseNotationBlock source of
+  (notations, templates) <- case parseNotationBlockWithLatexTemplates source of
     Left diagnostic -> Left (formatNotationDiagnostic origins diagnostic)
     Right parsed -> Right parsed
   let render ordinal block = case blockKind block of
         NotationBlock -> Right (rawLatex (Text.unlines (map ("% " <>) (Text.lines (blockSource block)))))
-        RuleBlock attributes -> case parseBlockAttributes attributes >>= \options -> parseBlockSection notations options (blockSource block) >>= \section -> renderLatex (Document notations [section]) of
+        RuleBlock attributes -> case parseBlockAttributes attributes >>= \options -> parseBlockSection notations options (blockSource block) >>= \section -> renderLatex templates (Document notations [section]) of
           Left diagnostic ->
             let related sourceSpan = formatNotationDiagnostic origins diagnostic {diagnosticSpan = sourceSpan, diagnosticMessage = "Competing notation declared here."}
              in Left (formatBlockDiagnostic ordinal block diagnostic <> foldMap related (diagnosticRelated diagnostic))

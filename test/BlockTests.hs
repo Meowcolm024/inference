@@ -22,18 +22,19 @@ blockTests =
             case bnfProductions types of
               [production, _] -> do
                 map atomName (productionCategories production) @?= [Just "A", Just "B"]
-                map productionRowIndent (productionRows production) @?= [0, 8]
                 map (map atomName . productionAlternatives) (productionRows production)
                   @?= [[Just "x", Just "y"], [Just "z"]]
               other -> assertFailure (show other)
           other -> assertFailure (show other),
       testProperty "all reserved dash counts identify the same BNF group" dashProperty,
-      testCase "continuations omit the leading bar and retain indentation and alternative separators" $ do
-        let source = "\\begin{inference}[kind=bnf]\n--- Terms\nA ::= x | y\n        | z | w\n\\end{inference}"
-        output <- parsed source (compileSource source)
-        assertBool "keeps the continuation indentation" (Text.isInfixOf "\\hspace{4em}z \\mid w" output)
-        assertBool "omits the continuation marker" (not (Text.isInfixOf "\\hspace{4em}\\mid" output))
-        assertBool "keeps the first production row" (Text.isInfixOf "A \\mathrel{::=} x \\mid y" output),
+      testCase "continuations align with alternatives independently of source whitespace" $ do
+        let source body = "\\begin{inference}[kind=bnf]\n--- Terms\n" <> body <> "\n\\end{inference}"
+            indented = source "  A ::= x | y\n        | z | w"
+            compact = source "A::=x|y\n|z|w"
+        output <- parsed indented (compileSource indented)
+        compileSource compact @?= Right output
+        assertBool "uses the same alternatives column without the leading bar" $
+          all (`Text.isInfixOf` output) ["A & ::= & x \\mid y", "\n & & z \\mid w"],
       testCase "BNF layout ignores delimiters consumed inside grouping and mixfix" $ do
         body <-
           parsedBody

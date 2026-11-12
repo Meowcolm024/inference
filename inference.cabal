@@ -52,8 +52,10 @@ library
   exposed-modules:
       Inference.AST
       Inference.LaTeX
+      Inference.LaTeX.Templates
       Inference.Parser
   other-modules:
+      Inference.LaTeX.Unicode
       Inference.Parser.Body
       Inference.Parser.Environment
       Inference.Parser.Expression

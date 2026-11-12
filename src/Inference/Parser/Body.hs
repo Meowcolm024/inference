@@ -28,7 +28,7 @@ parseBnf table (line : rest)
       | Just (marker, _) <- dashLabel source =
           problem InvalidBnfGroup marker "Separate syntax groups with a blank line."
       | Text.isPrefixOf "|" (locatedValue source) =
-          problem OrphanContinuation (location source) "A continuation needs an indented row after a production."
+          problem OrphanContinuation (location source) "A continuation needs a preceding production."
       | otherwise = do
           let (categoriesText, suffix) = Text.breakOn "::=" (locatedValue source)
               categoryWidth = Text.length categoriesText
@@ -39,14 +39,11 @@ parseBnf table (line : rest)
           rows <- traverse continuation continuations
           (Production categories (first : rows) :) <$> parseProductions next
 
-    continuation source
-      | sourceColumn (spanStart (location source)) <= 1 =
-          problem OrphanContinuation (location source) "Indent a continuation row beneath its production."
-      | otherwise = alternatives source (trimLocated (sliceLocated 1 (Text.length (locatedValue source) - 1) source))
+    continuation source = alternatives source (trimLocated (sliceLocated 1 (Text.length (locatedValue source) - 1) source))
 
     alternatives physical source = do
       expressions <- parseAlternatives source
-      pure (ProductionRow (location physical) (sourceColumn (spanStart (location physical)) - 1) expressions)
+      pure (ProductionRow (location physical) expressions)
 
     parseAlternatives source
       | Text.null (locatedValue source) = problem InvalidProduction (location source) "Expected a nonempty production alternative."

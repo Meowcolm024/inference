@@ -23,7 +23,6 @@ module Inference.AST
     Notation (..),
     PatternPart (..),
     HolePrecedence (..),
-    TemplatePart (..),
   )
 where
 
@@ -104,7 +103,6 @@ data Production = Production
 
 data ProductionRow = ProductionRow
   { productionRowSpan :: SourceSpan,
-    productionRowIndent :: Int,
     productionAlternatives :: [Expr]
   }
   deriving (Eq, Show)
@@ -160,8 +158,7 @@ data Notation = Notation
   { notationId :: NotationId,
     notationSpan :: SourceSpan,
     notationPrecedence :: Integer,
-    notationPattern :: NonEmpty PatternPart,
-    notationTemplate :: NonEmpty TemplatePart
+    notationPattern :: NonEmpty PatternPart
   }
   deriving (Eq, Show)
 
@@ -169,7 +166,4 @@ data PatternPart = Literal Text | Hole Text HolePrecedence
   deriving (Eq, Show)
 
 data HolePrecedence = AtLeast Integer | AtomOnly
-  deriving (Eq, Show)
-
-data TemplatePart = Fragment Text | Reference Text
   deriving (Eq, Show)

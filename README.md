@@ -10,8 +10,8 @@ Put rule sets in `inference` environments and declarations in `inference-notatio
 
 ```text
 \begin{inference-notation}
-infixr:60 " → " => "\to"
-notation:50 Γ:51 "⊢" e:51 ":" A:51 => Γ " \vdash " e " : " A
+infixr:60 "→"
+notation:50 Γ:51 "⊢" e:51 ":" A:51
 \end{inference-notation}
 
 \begin{inference}[rule_set=Typing]
@@ -26,7 +26,7 @@ Set `kind=bnf` or `kind=equation` on an `inference` environment to select anothe
 
 ```text
 \begin{inference-notation}
-infix:53 "=" => "="
+infix:53 "="
 \end{inference-notation}
 
 \begin{inference}[kind=bnf,rule_set=Syntax]
@@ -42,7 +42,7 @@ x = x
 \end{inference}
 ```
 
-In BNF, `::=` and `|` are grammar keywords. Start each group with a name after three or more dashes, and separate groups with a blank line. Indented `|` rows continue the preceding production. The renderer omits their leading bar, preserves row breaks, and uses half an em per source column of indentation.
+In BNF, `::=` and `|` are grammar keywords. Start each group with a name after three or more dashes, and separate groups with a blank line. Rows beginning with `|` continue the preceding production. The renderer preserves row breaks, omits the leading bar, and aligns the alternatives in the same column regardless of source indentation.
 
 In equations, the first outer `=` is a grammar keyword. Both sides use the shared notation table. A whitespace-separated `--` introduces a guard, and an initial `if` is rendered upright. Guard conditions use ordinary notation, so the equality declaration above is needed for `x = y` inside the guard. Blank source rows remain separated in the output. Parentheses and mixfix delimiters protect separators inside expressions.
 
@@ -76,11 +76,13 @@ Each `.tex` example is a complete LaTeX document that loads `mathpartir`. You ca
 \end{document}
 ```
 
-The renderer translates common Greek letters, math symbols, and scripts to LaTeX. Other Unicode characters pass through and require support from the document's TeX engine and fonts. Notation templates contain literal LaTeX and can use commands from packages loaded by the document.
+Notation declarations can omit `=>`. LaTeX then renders literals and hole arguments in pattern order, translating common Greek letters, math symbols, and scripts in both atoms and notation literals. Other Unicode characters pass through and require support from the document's TeX engine and fonts. Use an explicit template such as `infixr:60 "→" => "\Rightarrow"` to override the default rendering.
 
 ## Use the library
 
-`Inference.LaTeX.compileSource` rewrites a LaTeX `Text` input directly. Use `Inference.Parser.parseSource` to inspect its parsed chunks.
+`Inference.LaTeX.compileSource` rewrites a LaTeX `Text` input directly. Use `Inference.Parser.parseSource` to inspect its parsed chunks. Rules, BNF productions, and equations share a backend-independent expression AST that retains Unicode text, notation IDs, and arguments.
+
+Use `parseSourceWithLatexTemplates` with `renderSourceLatex` to keep parsing and rendering separate. When parsing individual blocks, use `parseNotationBlockWithLatexTemplates` to obtain the syntax declarations and LaTeX templates, then pass the declarations to `parseBlockSection` and the templates to `renderLatex` alongside the assembled `Document`. Supply `mempty` for the templates to use pattern-based rendering throughout.
 
 From the repository root, run `stack repl inference:lib` and enter these commands.
 

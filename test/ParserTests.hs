@@ -1,9 +1,11 @@
 module ParserTests (parserTests) where
 
 import Data.List.NonEmpty (NonEmpty (..))
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Inference.AST
+import Inference.LaTeX.Templates (TemplatePart (..))
 import Inference.Parser
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, assertFailure, testCase, (@?=))
@@ -131,16 +133,17 @@ declarationTests =
     "Declarations"
     [ testCase "infix shorthand lowers to a pattern and preserves template text" $ do
         let input = "infixr:60 \" → \" => \" \\to \""
-        notations <- parsed input (parseNotationBlock input)
+        (notations, templates) <- parsed input (parseNotationBlockWithLatexTemplates input)
         case notations of
           [notation] -> do
             notationPattern notation @?= Hole "left" (AtLeast 61) :| [Literal "→", Hole "right" (AtLeast 60)]
-            notationTemplate notation @?= Reference "left" :| [Fragment " \\to ", Reference "right"]
+            Map.lookup (notationId notation) templates @?= Just (Reference "left" :| [Fragment " \\to ", Reference "right"])
           other -> assertFailure ("Expected one notation, found " <> show other),
       testCase "quoted text supports literal quotes and backslashes" $ do
         let input = "notation:5 \"a\" => \"\\\"\\\\\""
-        notations <- parsed input (parseNotationBlock input)
-        map notationTemplate notations @?= [Fragment "\"\\" :| []],
+        (notations, templates) <- parsed input (parseNotationBlockWithLatexTemplates input)
+        map notationId notations @?= [NotationId 1]
+        Map.elems templates @?= [Fragment "\"\\" :| []],
       testCase "invalid patterns" $ do
         failsWith (parseNotationBlock "notation:5 x:0 y:0 => x") InvalidPattern (at 1 16 19)
         failsWith (parseNotationBlock "notation:5 x:0 \"+\" x:0 => x") InvalidPattern (at 1 20 23)
