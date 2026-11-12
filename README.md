@@ -48,11 +48,12 @@ In equations, the first outer `=` is a grammar keyword. Both sides use the share
 
 ## Run the CLI
 
-By default, `inference` runs as a Pandoc JSON filter. Use Pandoc Markdown or Org as the input format and `latex` as the output format.
+By default, `inference` runs as a Pandoc JSON filter. Use Pandoc Markdown or Org as input and `latex`, `html`, `html4`, or `html5` as output.
 
 ```sh
 stack build
 stack exec pandoc -- --from=markdown --to=latex --filter=inference example/stlc.md -o notes.tex
+stack exec pandoc -- --from=markdown --to=html5 --standalone --mathml --filter=inference example/stlc.md -o notes.html
 ```
 
 For Org documents, use `--from=org` with `#+BEGIN_SRC inference` blocks. Both formats support a `rule_set` caption, a `kind` attribute, and separate `inference-notation` blocks. Select BNF with `{.inference kind=bnf}` in Markdown or `#+BEGIN_SRC inference :kind bnf` in Org. Use `equation` for equation blocks. Notation applies throughout the document, including to earlier blocks. Other output formats pass through unchanged. The [filter design](docs/DESIGN.md#4-pandoc-json-filter) shows both block syntaxes.
@@ -83,10 +84,10 @@ A notation can also have indented backend overrides immediately below its declar
 ```text
 infixr:60 "→"
   latex => lhs "\Rightarrow " rhs
-  html => lhs "<mo>→</mo>" rhs
+  html => lhs " <span>→</span> " rhs
 ```
 
-The LaTeX renderer uses its own override when present and otherwise renders the pattern. Other backend overrides are available through the library parser.
+LaTeX and HTML each use their own override when present and otherwise render the pattern. HTML inference blocks use Unicode expressions and inline CSS. HTML template fragments are inserted as raw markup, so use them with trusted source documents. The `--mathml` option above controls ordinary Pandoc math.
 
 ## Use the library
 

@@ -20,7 +20,7 @@ main = do
       info
         (helper <*> modeParser)
         ( fullDesc
-            <> progDesc "Filter Pandoc JSON from stdin. Convert inference blocks when FORMAT is latex."
+            <> progDesc "Filter Pandoc JSON from stdin. Convert inference blocks for LaTeX and HTML writers."
             <> footer "Try pandoc --from=markdown --to=latex --filter=inference notes.md"
         )
   case mode of

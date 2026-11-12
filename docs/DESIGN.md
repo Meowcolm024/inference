@@ -270,6 +270,8 @@ In Org, the corresponding notation block opens with `#+BEGIN_SRC inference-notat
 
 The second pass also replaces each `inference` block with a `RawBlock` tagged `latex`, dispatching to the body parser and renderer selected by `kind`. Each nonempty inference-rule block produces a separate `mathpar` group even when two blocks share a title. Other blocks and document metadata stay in the AST. Markdown and Org are the supported readers. Pandoc's JSON filter protocol supplies the target format and AST without identifying the reader.
 
+For `html`, `html4`, and `html5`, the filter uses the same two passes and inserts HTML fragments with inline styles. Inference rules use Unicode expressions and CSS for the rule bar and premise layout. BNF and equations use tables. The filter hides declaration blocks and preserves IDs on rendered rule blocks. An explicit `html` template supplies raw markup for its notation.
+
 Pass the document AST through unchanged for other targets or when the target argument is absent. On invalid JSON, an incompatible AST version, or a rule compilation error, report the failure on stderr and exit with a nonzero status. For rule diagnostics, include the block identifier or ordinal and the block-relative source span.
 
 ## 5. Reader, AST, and backend architecture

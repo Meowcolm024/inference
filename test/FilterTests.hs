@@ -2,7 +2,7 @@ module FilterTests (filterTests) where
 
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
-import Inference.Pandoc (compileDocument)
+import Inference.Pandoc (compileDocument, compileDocumentFor)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
 import Text.Pandoc.Definition (Block (..), Format (..), Inline (..), Meta (..), MetaValue (..), Pandoc (..), nullMeta)
@@ -71,5 +71,35 @@ filterTests =
             assertBool "locates the ambiguous rule" (Text.isPrefixOf "inference block #rule:2:" diagnostic)
             assertBool "locates the nested declaration" (Text.isInfixOf "inference block #left:2:1: Competing notation declared here." diagnostic)
             assertBool "locates the later declaration" (Text.isInfixOf "inference block #right:1:1: Competing notation declared here." diagnostic)
-          Right _ -> assertFailure "Expected an ambiguity diagnostic."
+          Right _ -> assertFailure "Expected an ambiguity diagnostic.",
+      testCase "HTML writers render all block kinds with inline styles" $ do
+        let prose = Para [Str "Kept"]
+            input =
+              Pandoc
+                (Meta (Map.singleton "title" (MetaString "Kept")))
+                [ prose,
+                  CodeBlock ("rule", ["inference"], [("rule_set", "Types & <terms>")]) "A < B\n──── Intro <&>\nA → B",
+                  CodeBlock ("", ["inference"], []) "──── Base\nι",
+                  CodeBlock ("", ["inference"], [("kind", "bnf")]) "--- Types & terms\nA ::= X\n  | X → X",
+                  CodeBlock ("", ["inference"], [("kind", "equation")]) "x = y -- if x < y\n\nz = z",
+                  CodeBlock ("", ["inference-notation"], []) "infixr:60 \"→\" => \"\\to\"\n  html => lhs \" <b>→</b> \" rhs\ninfix:50 \"<\""
+                ]
+            html = compileDocumentFor (Format "html5") input
+        compileDocumentFor (Format "html") input @?= html
+        compileDocumentFor (Format "html4") input @?= html
+        compileDocumentFor (Format "docx") input @?= Right input
+        case html of
+          Right (Pandoc metadata [kept, Div ("rule", [], []) [RawBlock ruleFormat rule], RawBlock _ axiom, RawBlock _ bnf, RawBlock _ equation, RawBlock _ declaration]) -> do
+            metadata @?= Meta (Map.singleton "title" (MetaString "Kept"))
+            kept @?= prose
+            ruleFormat @?= Format "html"
+            assertBool "renders a labeled rule and escapes source text" (all (`Text.isInfixOf` rule) ["border-top:", "A &lt; B", "Intro &lt;&amp;&gt;", "<figcaption", "Types &amp; &lt;terms&gt;"])
+            assertBool "uses the forward HTML template" ("A <b>→</b> B" `Text.isInfixOf` rule)
+            assertBool "renders a Unicode axiom with a bar and label" (all (`Text.isInfixOf` axiom) ["border-top:", "ι", "Base"])
+            assertBool "omits the axiom's empty premises row" (not ("grid-area:1/1" `Text.isInfixOf` axiom))
+            assertBool "renders a named BNF table with a continuation row" (all (`Text.isInfixOf` bnf) ["<table", "Types &amp; terms", "::=", "<tr><td", "X <b>→</b> X"])
+            Text.count "<tr>" bnf @?= 2
+            assertBool "renders an equation guard and spacer row" (all (`Text.isInfixOf` equation) ["<table", "if x &lt; y", "colspan=\"4\""])
+            declaration @?= ""
+          other -> assertFailure (show other)
     ]

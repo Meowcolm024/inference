@@ -4,6 +4,7 @@ module Inference.Blocks
     BlockCompilationError (..),
     BlockDiagnostic (..),
     compileBlocks,
+    compileBlocksWithTemplates,
   )
 where
 
@@ -13,7 +14,8 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Inference.AST (Document (..), SourcePosition (..), SourceSpan (..))
 import Inference.LaTeX.Templates (LatexTemplates)
-import Inference.Parser (Diagnostic (..), parseBlockAttributes, parseBlockSection, parseNotationBlockWithLatexTemplates)
+import Inference.Parser (Diagnostic (..), parseBlockAttributes, parseBlockSection, parseNotationBlockWithTemplates)
+import Inference.Templates (BackendTemplates, templatesFor)
 
 data InferenceBlockKind = NotationBlock | RuleBlock [(Text, Text)]
   deriving (Eq, Show)
@@ -44,8 +46,17 @@ compileBlocks ::
   (LatexTemplates -> Document -> Either Diagnostic output) ->
   [InferenceBlock] ->
   Either BlockCompilationError [output]
-compileBlocks renderDeclaration renderDocument blocks = do
-  (notations, templates) <- case parseNotationBlockWithLatexTemplates source of
+compileBlocks renderDeclaration renderDocument =
+  compileBlocksWithTemplates renderDeclaration (renderDocument . templatesFor "latex")
+
+-- Use backend-specific overrides from the same set of notation declarations.
+compileBlocksWithTemplates ::
+  (Text -> output) ->
+  (BackendTemplates -> Document -> Either Diagnostic output) ->
+  [InferenceBlock] ->
+  Either BlockCompilationError [output]
+compileBlocksWithTemplates renderDeclaration renderDocument blocks = do
+  (notations, templates) <- case parseNotationBlockWithTemplates source of
     Left diagnostic -> Left (BlockCompilationError (locateNotation diagnostic) [])
     Right parsed -> Right parsed
   let compileBlock entry@(_, block) = case blockKind block of

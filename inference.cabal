@@ -54,6 +54,7 @@ library
   exposed-modules:
       Inference.AST
       Inference.Blocks
+      Inference.HTML
       Inference.LaTeX
       Inference.LaTeX.Templates
       Inference.Parser
