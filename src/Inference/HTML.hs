@@ -97,10 +97,11 @@ renderBnfGroup renderExpr group = do
       pure $ case rows of
         [] -> ""
         first : rest ->
-          row [rightCell (Text.intercalate ", " categories), cell "::=", cell first]
+          row [rightCell (Text.intercalate ", " categories), cell (separator "::="), cell first]
             <> foldMap (\continuation -> row [cell "", cell "", cell continuation]) rest
     renderAlternatives alternatives =
-      Text.intercalate " | " <$> traverse renderExpr (productionAlternatives alternatives)
+      Text.intercalate (" " <> separator "|" <> " ") <$> traverse renderExpr (productionAlternatives alternatives)
+    separator = styled "span" "padding-inline:2pt"
 
 renderEquationRow :: ExpressionRenderer -> EquationRow -> Either Diagnostic Text
 renderEquationRow _ (EquationBlank _) = Right (row ["<td colspan=\"4\" style=\"height:.75em\"></td>"])

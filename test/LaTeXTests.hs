@@ -26,6 +26,50 @@ latexTests =
         output <- parsed input (compileSource input)
         assertBool "maps atom and notation characters and escapes the underscore" $
           Text.isInfixOf "{\\Gamma\\vdash e_{1}:\\iota\\to A\\_name}" output,
+      testCase "maps directional arrows and PLFA reduction notation" $ do
+        let input =
+              oneRule
+                [ "infix:20 \"↖\"",
+                  "infix:20 \"⇓\"",
+                  "infix:20 \"←—\"",
+                  "infix:20 \"—↠\"",
+                  "infix:20 \"↞—\"",
+                  "infix:20 \"⟺\""
+                ]
+                "(a ↖ b) (c ⇓ d) (e ←— f) (g —↠ h) (i ↞— j) (k ⟺ l)"
+        output <- parsed input (compileSource input)
+        assertBool "maps each complete arrow literal" $
+          all
+            (`Text.isInfixOf` output)
+            [ "a\\nwarrow b",
+              "c\\Downarrow d",
+              "e\\longleftarrow f",
+              "g\\mathrel{\\relbar\\joinrel\\twoheadrightarrow}h",
+              "i\\mathrel{\\twoheadleftarrow\\joinrel\\relbar}j",
+              "k\\Longleftrightarrow l"
+            ],
+      testCase "maps Unicode double brackets and preserves ASCII brackets" $ do
+        let input =
+              oneRule
+                [ "notation:30 \"[[\" e:0 \"]]\"",
+                  "notation:30 \"⟦\" e:0 \"⟧\"",
+                  "notation:30 \"[\" e:0 \"]\""
+                ]
+                "([[ x ]]) (⟦ x ⟧) ([ [ x ] ])"
+        output <- parsed input (compileSource input)
+        assertBool "maps only the Unicode double brackets" $
+          Text.isInfixOf "\\left([[x]]\\right)\\,\\left(\\llbracket x\\rrbracket\\right)\\,\\left([[x]]\\right)" output,
+      testCase "maps blackboard-bold identifiers, primes, and PLFA operators" $ do
+        let input =
+              oneRule
+                [ "infixr:20 \"⊎\"",
+                  "infix:10 \"⦂\"",
+                  "notation:30 \"ƛ\" x:atom \"·\" e:30"
+                ]
+                "ƛ 𝕒″ · ℰ ⦂ ℕ₁ ⊎ 𝔹"
+        output <- parsed input (compileSource input)
+        assertBool "renders scripts on the blackboard-bold base and maps notation literals" $
+          Text.isInfixOf "{\\lambda\\,\\mathbb{a}^{\\prime\\prime}\\cdot\\mathcal{E}\\mathrel{:}\\mathbb{N}_{1}\\uplus\\mathbb{B}}" output,
       testCase "explicit templates override rendering without changing the expression AST" $ do
         let automatic = oneRule ["infixr:60 \"→\"", "notation:10 e:11 \"term\""] "ι → A term"
             explicit = oneRule ["infixr:60 \"→\" => \"\\Rightarrow\"", "notation:10 e:11 \"term\" => \"\\mathsf{term}(\" e \")\""] "ι → A term"

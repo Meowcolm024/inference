@@ -111,7 +111,7 @@ identifierContinue character =
     || character `elem` scriptCharacters
   where
     -- Unicode classifies the script letters as letters already.
-    scriptCharacters = "₀₁₂₃₄₅₆₇₈₉⁰¹²³⁴⁵⁶⁷⁸⁹₊₋₌₍₎⁺⁻⁼⁽⁾" :: String
+    scriptCharacters = "₀₁₂₃₄₅₆₇₈₉⁰¹²³⁴⁵⁶⁷⁸⁹₊₋₌₍₎⁺⁻⁼⁽⁾′″‴⁗" :: String
 
 symbolic :: Char -> Bool
 symbolic character = isSymbol character || isPunctuation character

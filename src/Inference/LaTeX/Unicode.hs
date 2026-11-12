@@ -24,7 +24,10 @@ joinLatex = foldr append ""
 data Script = Subscript Char | Superscript Char
 
 renderMathText :: Text -> Text
-renderMathText = joinLatex . chunks . Text.unpack
+renderMathText text =
+  case Map.lookup text mathLiterals of
+    Just latex -> latex
+    Nothing -> joinLatex (chunks (Text.unpack text))
   where
     chunks [] = []
     chunks (first : rest) =
@@ -53,10 +56,21 @@ scriptCharacters =
         ++ sup "ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖʳˢᵗᵘᵛʷˣʸᶻ" "abcdefghijklmnoprstuvwxyz"
         ++ sup "ᴬᴮᴰᴱᴳᴴᴵᴶᴷᴸᴹᴺᴼᴾᴿᵀᵁⱽᵂ" "ABDEGHIJKLMNOPRTUVW"
         ++ sup "ᵅᵝᵞᵟᵋᶿᶥᵠᵡᶲ" "αβγδεθιφχϕ"
+        ++ sup "′″‴⁗" "′″‴⁗"
     )
   where
     sub chars base = zip chars (map Subscript base)
     sup chars base = zip chars (map Superscript base)
+
+-- PLFA writes long reduction arrows as two-character literals.
+mathLiterals :: Map Text Text
+mathLiterals =
+  Map.fromList
+    [ ("—→", "\\longrightarrow"),
+      ("←—", "\\longleftarrow"),
+      ("—↠", "\\mathrel{\\relbar\\joinrel\\twoheadrightarrow}"),
+      ("↞—", "\\mathrel{\\twoheadleftarrow\\joinrel\\relbar}")
+    ]
 
 mathChar :: Char -> Text
 mathChar char = Map.findWithDefault (escapeTextChar char) char mathCharacters
@@ -75,11 +89,39 @@ mathCharacters =
         ++ commands "→←↔⇒⇐⇔↦" "to leftarrow leftrightarrow Rightarrow Leftarrow Leftrightarrow mapsto"
         ++ commands "∪∩⊆⊂⊇⊃∑∏∫" "cup cap subseteq subset supseteq supset sum prod int"
         ++ commands "⊢⊣⊨" "vdash dashv models"
-        ++ commands "↪↑↓↕⟶⟹" "hookrightarrow uparrow downarrow updownarrow longrightarrow Longrightarrow"
+        ++ commands "↑↓↕⇑⇓⇕↖↗↘↙" "uparrow downarrow updownarrow Uparrow Downarrow Updownarrow nwarrow nearrow searrow swarrow"
+        ++ commands "↩↪↼↽⇀⇁⇌⇋" "hookleftarrow hookrightarrow leftharpoonup leftharpoondown rightharpoonup rightharpoondown rightleftharpoons leftrightharpoons"
+        ++ commands "⟵⟶⟷⟸⟹⟺⟼" "longleftarrow longrightarrow longleftrightarrow Longleftarrow Longrightarrow Longleftrightarrow longmapsto"
+        ++ commands "↞↠↢↣↫↬↭↶↷↺↻↰↱" "twoheadleftarrow twoheadrightarrow leftarrowtail rightarrowtail looparrowleft looparrowright leftrightsquigarrow curvearrowleft curvearrowright circlearrowleft circlearrowright Lsh Rsh"
+        ++ commands "⇄⇆⇇⇈⇉⇊⇚⇛⇝" "rightleftarrows leftrightarrows leftleftarrows upuparrows rightrightarrows downdownarrows Lleftarrow Rrightarrow rightsquigarrow"
+        ++ commands "↚↛↮⇍⇏⇎" "nleftarrow nrightarrow nleftrightarrow nLeftarrow nRightarrow nLeftrightarrow"
         ++ commands "⟨⟩⌈⌉⌊⌋·⋅∓≃≅∝∂∇∖" "langle rangle lceil rceil lfloor rfloor cdot cdot mp simeq cong propto partial nabla setminus"
+        ++ commands "⟦⟧ƛℓ∋⊎⊗⊕⊙⊔⊓∘" "llbracket rrbracket lambda ell ni uplus otimes oplus odot sqcup sqcap circ"
+        ++ commands "⊑⊒⨆≲≳≐∎∥∣★⋆" "sqsubseteq sqsupseteq bigsqcup lesssim gtrsim doteq blacksquare parallel mid bigstar star"
+        ++ commands "⊬⊭⊩⊪" "nvdash nvDash Vdash Vvdash"
+        ++ commands "↤↥↧⨟" "Yleft Yup Ydown fatsemi"
+        ++ [ ('∸', "\\mathbin{\\dot{-}}"),
+             ('′', "\\prime"),
+             ('″', "\\prime\\prime"),
+             ('‴', "\\prime\\prime\\prime"),
+             ('⁗', "\\prime\\prime\\prime\\prime"),
+             ('⦂', "\\mathrel{:}"),
+             ('∷', "\\mathbin{::}"),
+             ('≢', "\\not\\equiv"),
+             ('≟', "\\stackrel{?}{=}"),
+             ('≔', "\\mathrel{:=}"),
+             ('≕', "\\mathrel{=:}"),
+             ('ℰ', "\\mathcal{E}"),
+             ('ℱ', "\\mathcal{F}"),
+             ('†', "\\dagger"),
+             ('‡', "\\ddagger")
+           ]
+        ++ blackboard "𝔸𝔹ℂ𝔻𝔼𝔽𝔾ℍ𝕀𝕁𝕂𝕃𝕄ℕ𝕆ℙℚℝ𝕊𝕋𝕌𝕍𝕎𝕏𝕐ℤ" ['A' .. 'Z']
+        ++ blackboard ['𝕒' .. '𝕫'] ['a' .. 'z']
     )
   where
     commands chars names = zip chars (map (Text.cons '\\') (Text.words names))
+    blackboard chars letters = zip chars ["\\mathbb{" <> Text.singleton letter <> "}" | letter <- letters]
 
 escapeTextChar :: Char -> Text
 escapeTextChar = \case

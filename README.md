@@ -79,6 +79,12 @@ Each `.tex` example is a complete LaTeX document that loads `mathpartir`. You ca
 
 Notation declarations can omit `=>`. LaTeX then renders literals and hole arguments in pattern order, translating common Greek letters, math symbols, and scripts in both atoms and notation literals. Other Unicode characters pass through and require support from the document's TeX engine and fonts. Use an explicit template such as `infixr:60 "→" => "\Rightarrow"` to override the default rendering.
 
+The LaTeX mappings include directional arrows such as `↖` and `⇓`, PLFA reduction arrows such as `—→` and `—↠`, and symbols such as `ƛ`, `⊎`, and `⦂`. Blackboard-bold letters such as `ℕ`, `𝔹`, and `𝕒` render with `\mathbb`. Unicode primes can follow an identifier, as in `e′` and `e″`. [PLFA’s symbol inventory](https://plfa.inf.ed.ac.uk/Fonts/)
+
+Declare operators and delimiters through notation as usual. For example, `notation:30 "⟦" e:0 "⟧"` renders `⟦ e ⟧` as double brackets.
+
+Load `amssymb` for extended arrows and uppercase `\mathbb`, and `stmaryrd` for double brackets and symbols such as `⨟`. Lowercase `\mathbb` needs a font that provides lowercase glyphs, such as `bbold`. [AMS symbols](https://mirrors.ctan.org/fonts/amsfonts/doc/amssymb.pdf) · [St Mary’s Road symbols](https://tug.ctan.org/fonts/stmaryrd/stmaryrd.pdf) · [Blackboard-bold font](https://tug.ctan.org/fonts/bbold/bbold.pdf)
+
 A notation can also have indented backend overrides immediately below its declaration. Use each backend name once per notation. An inline `=>` counts as a LaTeX override. Infix override clauses refer to the operands as `lhs` and `rhs`.
 
 ```text

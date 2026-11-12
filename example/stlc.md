@@ -2,6 +2,21 @@
 
 The simply typed lambda calculus assigns types to variables, functions, and function applications. This example uses one base type $\iota$ and function types $A \to B$.
 
+## Syntax
+
+```{.inference kind=bnf rule_set="STLC syntax"}
+--- Types
+A, B ::= ι | A → B
+
+--- Terms
+e ::= x | λ x : A . e | e₁ e₂
+
+--- Contexts
+Γ ::= ∅ | Γ, x : A
+```
+
+Here $x$ ranges over variable names, and $e_1$ and $e_2$ range over terms. A context is empty or extends an existing context with a variable binding. The typing rules below specify when that extension is valid.
+
 ## Reading a rule
 
 Each line above the bar is a premise. The line below is the conclusion, and the name to the right of the bar labels the rule. A rule with no premises is an axiom.
@@ -48,7 +63,7 @@ $$
 
 ## Source notation
 
-These declarations give the rule blocks their notation and LaTeX templates. The typing judgment is one mixfix pattern with holes for the context, term, and type. Application uses juxtaposition, as in `e₁ e₂`.
+The grammar and rule blocks share these notation declarations and LaTeX templates. The typing judgment is one mixfix pattern with holes for the context, term, and type. Application uses juxtaposition, as in `e₁ e₂`.
 
 ```{.inference-notation}
 infixr:60 " → " => "\to"

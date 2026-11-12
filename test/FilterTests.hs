@@ -80,7 +80,7 @@ filterTests =
                 [ prose,
                   CodeBlock ("rule", ["inference"], [("rule_set", "Types & <terms>")]) "A < B\n──── Intro <&>\nA → B",
                   CodeBlock ("", ["inference"], []) "──── Base\nι",
-                  CodeBlock ("", ["inference"], [("kind", "bnf")]) "--- Types & terms\nA ::= X\n  | X → X",
+                  CodeBlock ("", ["inference"], [("kind", "bnf")]) "--- Types & terms\nA ::= X | Y\n  | X → X",
                   CodeBlock ("", ["inference"], [("kind", "equation")]) "x = y -- if x < y\n\nz = z",
                   CodeBlock ("", ["inference-notation"], []) "infixr:60 \"→\" => \"\\to\"\n  html => lhs \" <b>→</b> \" rhs\ninfix:50 \"<\""
                 ]
@@ -98,6 +98,7 @@ filterTests =
             assertBool "renders a Unicode axiom with a bar and label" (all (`Text.isInfixOf` axiom) ["border-top:", "ι", "Base"])
             assertBool "omits the axiom's empty premises row" (not ("grid-area:1/1" `Text.isInfixOf` axiom))
             assertBool "renders a named BNF table with a continuation row" (all (`Text.isInfixOf` bnf) ["<table", "Types &amp; terms", "::=", "<tr><td", "X <b>→</b> X"])
+            assertBool "adds spacing around both BNF separators" (all (`Text.isInfixOf` bnf) ["padding-inline:2pt\">::=</span>", "padding-inline:2pt\">|</span>"])
             Text.count "<tr>" bnf @?= 2
             assertBool "renders an equation guard and spacer row" (all (`Text.isInfixOf` equation) ["<table", "if x &lt; y", "colspan=\"4\""])
             declaration @?= ""
