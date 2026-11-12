@@ -1,19 +1,20 @@
 module Inference.Pandoc (runFilter, compileDocument, compileDocumentFor) where
 
 import Control.Exception (ErrorCall (..), Handler (..), IOException, catches)
-import Control.Monad.Trans.State.Strict (State, evalState, state)
+import Control.Monad.Trans.State.Strict (State, StateT (..), evalState, evalStateT, state)
 import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
-import Inference.Blocks (BlockCompilationError (..), BlockDiagnostic (..), InferenceBlock (..), InferenceBlockKind (..), compileBlocksWithTemplates)
-import Inference.HTML (renderHtml)
-import Inference.LaTeX (renderLatex)
-import Inference.Parser (formatDiagnostic)
+import Inference.AST (Expr, Notation)
+import Inference.Blocks (BlockCompilationError (..), BlockDiagnostic (..), InferenceBlock (..), InferenceBlockKind (..), compileBlocksWithContext)
+import Inference.HTML (renderHtml, renderHtmlExpression)
+import Inference.LaTeX (renderLatex, renderLatexExpression)
+import Inference.Parser (Diagnostic (..), formatDiagnostic, parseInlineExpression)
 import Inference.Templates (templatesFor)
 import System.Exit (die, exitFailure)
 import System.IO (hSetBinaryMode, hSetEncoding, stderr, stdin, stdout, utf8)
-import Text.Pandoc.JSON (Block (..), Format (..), Pandoc (..), toJSONFilter)
+import Text.Pandoc.JSON (Block (..), Format (..), Inline (..), MathType (..), Pandoc (..), toJSONFilter)
 import Text.Pandoc.Walk (query, walkM)
 
 runFilter :: Maybe String -> IO ()
@@ -39,15 +40,26 @@ compileDocument = compileDocumentFor (Format "latex")
 compileDocumentFor :: Format -> Pandoc -> Either Text Pandoc
 compileDocumentFor (Format target) document@(Pandoc metadata blocks)
   | target == "latex" =
-      compile renderDeclaration (\templates input -> rawLatex <$> renderLatex (templatesFor "latex" templates) input)
+      compile
+        renderDeclaration
+        (\templates input -> rawLatex <$> renderLatex (templatesFor "latex" templates) input)
+        (\templates notations expression -> Math InlineMath <$> renderLatexExpression (templatesFor "latex" templates) notations expression)
   | target `elem` ["html", "html4", "html5"] =
-      compile (const (rawHtml "")) (\templates input -> rawHtml <$> renderHtml (templatesFor "html" templates) input)
+      compile
+        (const (rawHtml ""))
+        (\templates input -> rawHtml <$> renderHtml (templatesFor "html" templates) input)
+        (\templates notations expression -> RawInline (Format "html") <$> renderHtmlExpression (templatesFor "html" templates) notations expression)
   | otherwise = Right document
   where
-    compile declaration rules =
-      case compileBlocksWithTemplates declaration rules (query (maybeToList . inferenceBlock) blocks) of
-        Left failure -> Left (formatCompilationError failure)
-        Right rendered -> Right (Pandoc metadata (evalState (walkM replaceBlock blocks) rendered))
+    compile declaration rules renderExpression = do
+      (rendered, expressions) <-
+        either (Left . formatCompilationError) Right $
+          compileBlocksWithContext declaration rules compileInlines (query (maybeToList . inferenceBlock) blocks)
+      withInlines <- expressions
+      pure (Pandoc metadata (evalState (walkM replaceBlock withInlines) rendered))
+      where
+        compileInlines notations templates related =
+          evalStateT (walkM (replaceInline notations (renderExpression templates notations) related) blocks) 1
     rawLatex = RawBlock (Format "latex")
     rawHtml = RawBlock (Format "html")
     renderDeclaration = rawLatex . Text.unlines . map ("% " <>) . Text.lines
@@ -57,6 +69,27 @@ inferenceBlock (CodeBlock (identifier, classes, attributes) source)
   | "inference-notation" `elem` classes = Just (InferenceBlock identifier NotationBlock source)
   | "inference" `elem` classes = Just (InferenceBlock identifier (RuleBlock attributes) source)
 inferenceBlock _ = Nothing
+
+replaceInline ::
+  [Notation] ->
+  (Expr -> Either Diagnostic Inline) ->
+  (Diagnostic -> [BlockDiagnostic]) ->
+  Inline ->
+  StateT Int (Either Text) Inline
+replaceInline notations render related (Code (identifier, classes, attributes) source)
+  | "inference" `elem` classes = StateT $ \ordinal ->
+      case parseInlineExpression notations source >>= render of
+        Left diagnostic ->
+          let reference
+                | Text.null identifier = "inference inline " <> Text.pack (show ordinal)
+                | otherwise = "inference inline #" <> identifier
+              primary = reference <> ":" <> formatDiagnostic source diagnostic {diagnosticRelated = []}
+           in Left (primary <> foldMap formatBlockDiagnostic (related diagnostic))
+        Right rendered ->
+          let remaining = (identifier, filter (/= "inference") classes, attributes)
+              replacement = if remaining == ("", [], []) then rendered else Span remaining [rendered]
+           in Right (replacement, ordinal + 1)
+replaceInline _ _ _ inline = pure inline
 
 replaceBlock :: Block -> State [Block] Block
 replaceBlock block = state $ \rendered ->

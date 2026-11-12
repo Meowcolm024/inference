@@ -52,11 +52,19 @@ By default, `inference` runs as a Pandoc JSON filter. Use Pandoc Markdown or Org
 
 ```sh
 stack build
-stack exec pandoc -- --from=markdown --to=latex --filter=inference example/stlc.md -o notes.tex
+stack exec pandoc -- --from=markdown+inline_code_attributes --to=latex --filter=inference example/stlc.md -o notes.tex
 stack exec pandoc -- --from=markdown --to=html5 --standalone --mathml --filter=inference example/stlc.md -o notes.html
 ```
 
 For Org documents, use `--from=org` with `#+BEGIN_SRC inference` blocks. Both formats support a `rule_set` caption, a `kind` attribute, and separate `inference-notation` blocks. Select BNF with `{.inference kind=bnf}` in Markdown or `#+BEGIN_SRC inference :kind bnf` in Org. Use `equation` for equation blocks. Notation applies throughout the document, including to earlier blocks. Other output formats pass through unchanged. The [filter design](docs/DESIGN.md#4-pandoc-json-filter) shows both block syntaxes.
+
+In Pandoc Markdown, write `A → B` as an attributed inline code span using the `inline_code_attributes` extension.
+
+```markdown
+The type `A → B`{.inference} has domain `A`{.inference}.
+```
+
+Each span contains one expression and can use notation declared anywhere in the document. The filter emits inline math for LaTeX and inline Unicode for HTML. See the [STLC tutorial](example/stlc.md) for a complete example.
 
 Use `--source` to rewrite inference environments in a LaTeX fragment or document.
 

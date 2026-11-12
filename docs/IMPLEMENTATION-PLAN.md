@@ -16,6 +16,8 @@ The Haskell library and CLI read UTF-8 inference rules and write LaTeX fragments
 10. **Add standalone notation modules.** Reuse the notation declaration grammar, add import directives, and resolve the module graph through a shared loader for LaTeX and Pandoc JSON. Feed the loaded sources into pure compilation and retain file locations for diagnostics. Share one STLC notation module between the LaTeX example and the Markdown tutorial.
 11. **Explore named backend templates and language exporters.** Associate notation names with backend templates, with the option to retire inline `=>` once the syntax is established. Require explicit mappings for notation applications in other backends. Prototype one language exporter against a documented subset and identify the declarations needed for structured code generation. Add a Unicode printer before promising round trips.
 
+Parse attributed Pandoc inline code with the shared expression parser and document-wide notation. Render it as inline math for LaTeX and inline Unicode or template markup for HTML. Use the [STLC Markdown tutorial](../example/stlc.md) to exercise forward notation in prose. Consider a braced macro for LaTeX source mode once the source scanner handles comments, verbatim text, and balanced macro arguments.
+
 ## Proposed libraries
 
 Use the existing Stack `lts-24.60` snapshot and add dependencies to `package.yaml` as each stage needs them. The proposed packages are available in the [LTS 24.60 snapshot](https://www.stackage.org/lts-24.60).

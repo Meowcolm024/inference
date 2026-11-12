@@ -5,6 +5,7 @@ module Inference.Blocks
     BlockDiagnostic (..),
     compileBlocks,
     compileBlocksWithTemplates,
+    compileBlocksWithContext,
   )
 where
 
@@ -12,7 +13,7 @@ import Data.IntMap.Strict qualified as IntMap
 import Data.List (mapAccumL)
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Inference.AST (Document (..), SourcePosition (..), SourceSpan (..))
+import Inference.AST (Document (..), Notation, SourcePosition (..), SourceSpan (..))
 import Inference.LaTeX.Templates (LatexTemplates)
 import Inference.Parser (Diagnostic (..), parseBlockAttributes, parseBlockSection, parseNotationBlockWithTemplates)
 import Inference.Templates (BackendTemplates, templatesFor)
@@ -55,7 +56,17 @@ compileBlocksWithTemplates ::
   (BackendTemplates -> Document -> Either Diagnostic output) ->
   [InferenceBlock] ->
   Either BlockCompilationError [output]
-compileBlocksWithTemplates renderDeclaration renderDocument blocks = do
+compileBlocksWithTemplates renderDeclaration renderDocument blocks =
+  fst <$> compileBlocksWithContext renderDeclaration renderDocument (\_ _ _ -> ()) blocks
+
+-- Inline expressions can use the same validated declarations and diagnostic origins.
+compileBlocksWithContext ::
+  (Text -> output) ->
+  (BackendTemplates -> Document -> Either Diagnostic output) ->
+  ([Notation] -> BackendTemplates -> (Diagnostic -> [BlockDiagnostic]) -> result) ->
+  [InferenceBlock] ->
+  Either BlockCompilationError ([output], result)
+compileBlocksWithContext renderDeclaration renderDocument compileOther blocks = do
   (notations, templates) <- case parseNotationBlockWithTemplates source of
     Left diagnostic -> Left (BlockCompilationError (locateNotation diagnostic) [])
     Right parsed -> Right parsed
@@ -68,16 +79,10 @@ compileBlocksWithTemplates renderDeclaration renderDocument blocks = do
             renderDocument templates (Document notations [section]) of
             Left diagnostic ->
               let primary = BlockDiagnostic (Just entry) diagnostic {diagnosticRelated = []}
-                  related span' =
-                    locateNotation
-                      diagnostic
-                        { diagnosticSpan = span',
-                          diagnosticMessage = "Competing notation declared here.",
-                          diagnosticRelated = []
-                        }
-               in Left (BlockCompilationError primary (map related (diagnosticRelated diagnostic)))
+               in Left (BlockCompilationError primary (relatedDeclarations diagnostic))
             Right rendered -> Right rendered
-  traverse compileBlock numbered
+  rendered <- traverse compileBlock numbered
+  pure (rendered, compileOther notations templates relatedDeclarations)
   where
     numbered = zip [1 ..] blocks
     declarations = [(ordinal, block) | (ordinal, block@InferenceBlock {blockKind = NotationBlock}) <- numbered]
@@ -86,6 +91,10 @@ compileBlocksWithTemplates renderDeclaration renderDocument blocks = do
     source = Text.concat [blockSource block <> "\r\n\n" | (_, block) <- declarations]
     origins = IntMap.fromDistinctAscList (snd (mapAccumL indexBlock 1 declarations))
     indexBlock line entry@(_, block) = (line + Text.count "\n" (blockSource block) + 2, (line, entry))
+    relatedDeclarations diagnostic =
+      [ locateNotation diagnostic {diagnosticSpan = span', diagnosticMessage = "Competing notation declared here."}
+      | span' <- diagnosticRelated diagnostic
+      ]
     locateNotation diagnostic =
       case IntMap.lookupLE (sourceLine (spanStart span')) origins of
         Just (firstLine, entry) ->

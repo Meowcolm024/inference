@@ -5,12 +5,12 @@ import Data.Text qualified as Text
 import Inference.Pandoc (compileDocument, compileDocumentFor)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
-import Text.Pandoc.Definition (Block (..), Format (..), Inline (..), Meta (..), MetaValue (..), Pandoc (..), nullMeta)
+import Text.Pandoc.Definition (Block (..), Format (..), Inline (..), MathType (..), Meta (..), MetaValue (..), Pandoc (..), nullMeta)
 
 filterTests :: TestTree
 filterTests =
   testGroup
-    "Pandoc block kinds"
+    "Pandoc filter"
     [ testCase "mixed kinds share forward notation and retain surrounding blocks" $ do
         let metadata = Meta (Map.singleton "title" (MetaString "Kept"))
             before = Para [Str "Before"]
@@ -37,6 +37,57 @@ filterTests =
             assertBool "defaults to inference rules" (Text.isInfixOf "\\inferrule" rule)
             assertBool "keeps notation comments" (Text.isPrefixOf "% infixr" declaration)
           other -> assertFailure (show other),
+      testCase "inline expressions use forward notation and keep surrounding prose and attributes" $ do
+        let source = "infixr:60 \"→\"\n  latex => lhs \"\\Rightarrow \" rhs\n  html => lhs \" <b>→</b> \" rhs\ninfix:50 \"<\""
+            ordinaryCode = Code ("", [], []) "A → B"
+            declaration = CodeBlock ("", ["inference-notation"], []) source
+            paragraph expressions = Para [Str "Type", Space, ordinaryCode, Space, Emph expressions]
+            attr = ("type", ["highlight"], [("data-note", "type")])
+            input =
+              Pandoc
+                nullMeta
+                [ paragraph
+                    [ Code ("type", ["highlight", "inference"], [("data-note", "type")]) "ι → B",
+                      Space,
+                      Code ("", ["inference"], []) "A < B"
+                    ],
+                  declaration
+                ]
+        case compileDocument input of
+          Right (Pandoc _ [prose, RawBlock (Format "latex") _]) ->
+            prose @?= paragraph [Span attr [Math InlineMath "\\iota\\Rightarrow B"], Space, Math InlineMath "A<B"]
+          other -> assertFailure (show other)
+        compileDocumentFor (Format "html5") input
+          @?= Right
+            ( Pandoc
+                nullMeta
+                [ paragraph [Span attr [RawInline (Format "html") "ι <b>→</b> B"], Space, RawInline (Format "html") "A &lt; B"],
+                  RawBlock (Format "html") ""
+                ]
+            )
+        compileDocumentFor (Format "docx") input @?= Right input,
+      testCase "inline diagnostics retain spans and competing block locations" $ do
+        let input =
+              Pandoc
+                nullMeta
+                [ Para [Code ("", ["inference"], []) "ι", Code ("use", ["inference"], []) "A → B → C"],
+                  CodeBlock ("left", ["inference-notation"], []) "infixl:60 \"→\"",
+                  CodeBlock ("right", ["inference-notation"], []) "infixr:60 \"→\""
+                ]
+        case compileDocument input of
+          Left diagnostic -> do
+            assertBool "identifies the inline code and shows its source" $
+              "inference inline #use:1:" `Text.isPrefixOf` diagnostic && "A → B → C" `Text.isInfixOf` diagnostic
+            assertBool "locates both declarations" $
+              all (`Text.isInfixOf` diagnostic) ["inference block #left:1:1:", "inference block #right:1:1:"]
+          Right _ -> assertFailure "Expected an inline ambiguity diagnostic.",
+      testCase "inline code accepts expressions only" $ do
+        let inline source = Para [Code ("", ["inference"], []) source]
+            checkBad source =
+              case compileDocument (Pandoc nullMeta [inline "ι", inline source]) of
+                Left diagnostic -> assertBool "identifies the second marked inline" ("inference inline 2:1:" `Text.isPrefixOf` diagnostic)
+                Right _ -> assertFailure ("Expected an inline diagnostic for " <> Text.unpack source)
+        mapM_ checkBad ["notation:30 \"op\"", "A ::= B", "x = y -- if p", "──── R\nx"],
       testCase "notation clauses cannot attach across Pandoc blocks" $ do
         let input =
               Pandoc

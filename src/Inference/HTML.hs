@@ -1,4 +1,4 @@
-module Inference.HTML (renderHtml) where
+module Inference.HTML (renderHtml, renderHtmlExpression) where
 
 import Data.Foldable (fold)
 import Data.List.NonEmpty qualified as NonEmpty
@@ -13,7 +13,6 @@ renderHtml :: Templates -> Document -> Either Diagnostic Text
 renderHtml templates document =
   Text.intercalate "\n" <$> traverse renderSection (documentSections document)
   where
-    notations = Map.fromList [(notationId notation, notation) | notation <- documentNotations document]
     renderSection section = do
       body <- case sectionBody section of
         InferenceRules [] -> pure ""
@@ -30,6 +29,12 @@ renderHtml templates document =
               styled "figure" "margin:1em 0" (body <> styled "figcaption" "margin-top:.5em" (escapeHtml title))
         _ -> body
 
+    renderExpr = renderHtmlExpression templates (documentNotations document)
+
+renderHtmlExpression :: Templates -> [Notation] -> Expr -> Either Diagnostic Text
+renderHtmlExpression templates declarations = renderExpr
+  where
+    notations = Map.fromList [(notationId notation, notation) | notation <- declarations]
     renderExpr expression = case exprNode expression of
       Atom name -> Right (escapeHtml name)
       Group inner -> do

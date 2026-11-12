@@ -5,6 +5,7 @@ module Inference.Parser
     parseNotationBlock,
     parseNotationBlockWithLatexTemplates,
     parseNotationBlockWithTemplates,
+    parseInlineExpression,
     parseRuleSection,
     parseBlockSection,
     parseBlockAttributes,
@@ -105,6 +106,15 @@ parseDeclarations lines' = do
               let (clauses, remaining) = go (expected + 1) rest
                in (line : clauses, remaining)
         go _ remaining = ([], remaining)
+
+-- Inline code has a single expression and uses the document's declarations.
+parseInlineExpression :: [Notation] -> Text -> Either Diagnostic Expr
+parseInlineExpression notations input = do
+  let first = SourcePosition 1 1
+      (line, remainder) = Text.break (\c -> c == '\n' || c == '\r') input
+  if Text.null remainder
+    then parseExpression (buildNotationTable notations) (trimLocated (Located (lineSpan first 0 (Text.length line)) line))
+    else Left (Diagnostic UnexpectedToken (pointSpan (advance first (Text.length line))) "Expected a single-line inline expression." [])
 
 -- The caller supplies the section boundary and the document-wide notation.
 parseRuleSection :: [Notation] -> Maybe Text -> Text -> Either Diagnostic Section

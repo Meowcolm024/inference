@@ -1,6 +1,6 @@
 # A Unicode Inference-Rule Typesetter
 
-A Haskell library and command-line tool for typesetting Unicode inference rules, BNF productions, and equations. The notation design draws on Lean 4. The primary inputs are LaTeX environments and attributed code blocks in Pandoc JSON documents.
+A Haskell library and command-line tool for typesetting Unicode inference rules, BNF productions, and equations. The notation design draws on Lean 4. The primary inputs are LaTeX environments and attributed code blocks and inline code spans in Pandoc JSON documents.
 
 Conceptually, it sits somewhere between Ott, Lean's notation parser, and a lightweight document preprocessor, without attempting to understand the semantics of the mathematical language.
 
@@ -88,7 +88,7 @@ The [untyped lambda calculus example](../example/untyped-lambda.tex) presents sy
 | Expressions    | Extensible notation parser                   |
 | Notation       | Lean 4-inspired precedence and associativity |
 | Output         | LaTeX today, with an HTML backend proposed |
-| Integration    | Pandoc JSON filter with native block attributes |
+| Integration    | Pandoc JSON filter with native block and inline code attributes |
 | Implementation | Haskell library and standalone CLI via Stack |
 
 The length of the horizontal separator has no semantic significance.
@@ -224,7 +224,7 @@ Application uses token boundaries, so `f(x)` and `f (x)` have the same grouping,
 
 ## 4. Pandoc JSON filter
 
-Pandoc reads and writes the document and runs `inference` between those steps using `--filter`. The CLI defaults to filter mode. It reads a JSON document AST from stdin, takes the target format from its first argument, and writes the resulting AST as JSON to stdout. The source syntax rework applies to `--source`. The Pandoc filter continues to read attributed code blocks. The CLI uses `Text.Pandoc.JSON.toJSONFilter` from `pandoc-types` for the filter protocol. [Pandoc JSON filter protocol](https://pandoc.org/filters.html) · [`Text.Pandoc.JSON` source](https://github.com/jgm/pandoc-types/blob/1.23.1.2/src/Text/Pandoc/JSON.hs)
+Pandoc reads and writes the document and runs `inference` between those steps using `--filter`. The CLI defaults to filter mode. It reads a JSON document AST from stdin, takes the target format from its first argument, and writes the resulting AST as JSON to stdout. The source syntax rework applies to `--source`. The Pandoc filter reads attributed code blocks and inline code spans. The CLI uses `Text.Pandoc.JSON.toJSONFilter` from `pandoc-types` for the filter protocol. [Pandoc JSON filter protocol](https://pandoc.org/filters.html) · [`Text.Pandoc.JSON` source](https://github.com/jgm/pandoc-types/blob/1.23.1.2/src/Text/Pandoc/JSON.hs)
 
 With `inference` on `PATH`, select the Markdown or Org reader explicitly.
 
@@ -273,6 +273,20 @@ The second pass also replaces each `inference` block with a `RawBlock` tagged `l
 For `html`, `html4`, and `html5`, the filter uses the same two passes and inserts HTML fragments with inline styles. Inference rules use Unicode expressions and CSS for the rule bar and premise layout. BNF and equations use tables. The filter hides declaration blocks and preserves IDs on rendered rule blocks. An explicit `html` template supplies raw markup for its notation.
 
 Pass the document AST through unchanged for other targets or when the target argument is absent. On invalid JSON, an incompatible AST version, or a rule compilation error, report the failure on stderr and exit with a nonzero status. For rule diagnostics, include the block identifier or ordinal and the block-relative source span.
+
+### Inline expressions
+
+In Pandoc Markdown, write an inline code span with the `.inference` class. The reader exposes this syntax through its `inline_code_attributes` extension. [Pandoc inline code attributes](https://pandoc.org/MANUAL.html#extension-inline_code_attributes)
+
+```markdown
+The type `A → B`{.inference} has domain `A`{.inference}.
+```
+
+The filter recognizes Pandoc `Code` nodes with the `inference` class. Each contains one Unicode expression and uses the document-wide notation declarations and backend templates, including declarations later in the document. Inline code has no declaration or block grammar. Rule bars, BNF productions, equation rows, and notation declarations belong in their respective blocks. Operators such as `=` follow the shared expression grammar and carry no equation layout meaning.
+
+For LaTeX, replace the code with an inline math node containing the rendered expression. For HTML targets, insert the escaped Unicode expression and any explicit HTML template markup inline. Preserve the identifier, other classes, and key-value attributes in a surrounding span when present. Leave ordinary inline code and unsupported targets unchanged. Diagnostics identify the inline code by identifier or ordinal, highlight the expression-relative span, and include the original locations of competing notation declarations.
+
+A possible counterpart in LaTeX source mode is `\inference{expression}`, using the same expression parser and document-wide notation. Supporting it requires recognizing a braced macro argument in surrounding LaTeX, including balanced braces and escaped characters, and skipping comments and verbatim content. The environment scanner remains the entry point for LaTeX source mode.
 
 ## 5. Reader, AST, and backend architecture
 

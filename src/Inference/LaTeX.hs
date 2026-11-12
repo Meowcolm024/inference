@@ -1,4 +1,4 @@
-module Inference.LaTeX (compileSource, renderSourceLatex, renderLatex) where
+module Inference.LaTeX (compileSource, renderSourceLatex, renderLatex, renderLatexExpression) where
 
 import Data.Char (isLetter)
 import Data.List (intersperse)
@@ -36,6 +36,9 @@ renderLatex templates document = do
       sections = filter (not . emptyBody . sectionBody) (documentSections document)
   fragments <- traverse (renderSection notations) sections
   pure (Text.intercalate "\n" fragments)
+
+renderLatexExpression :: LatexTemplates -> [Notation] -> Expr -> Either Diagnostic Text
+renderLatexExpression templates notations = renderExpr (notationIndex templates notations)
 
 type NotationIndex = Map NotationId (Notation, Maybe (NonEmpty TemplatePart))
 
