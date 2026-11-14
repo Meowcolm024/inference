@@ -1,50 +1,45 @@
 # Implementation plan
 
-The Haskell library and CLI read UTF-8 inference rules and write LaTeX fragments with `mathpar` groups. The [design](DESIGN.md) shows the notation and output. The CLI defaults to Pandoc JSON filter mode for Markdown and Org documents.
+The [design](DESIGN.md) documents the current syntax, architecture, and extension points.
 
-## Stages
+## Implemented
 
-1. **Specify the rule format.** Document separator recognition, optional labels, zero or more premises, one conclusion, blank lines, and the initial expression subset. Define source-span coordinates and the diagnostic kinds for malformed input. Keep the first fixture set small enough to exercise all of these decisions.
-2. **Build a standalone slice.** Parse rule structure with Megaparsec and render rules with simple atoms. Preserve input spans for diagnostics. Wire the library into the `inference` executable with stdin input, LaTeX on stdout, and diagnostics on stderr with a failing exit status.
-3. **Add mixfix expressions and application.** Validate declarations, lower the infix shorthands to the same pattern representation, and tokenize rule expressions using the declared literals. Use a Pratt parser with patterns that start at a literal and patterns that extend a left operand. Add a built-in application rule that consumes atom or parenthesized arguments at higher precedence than declared notation. Give application its own AST node and preserve notation identities and arguments on declared forms. Use the [STLC example](../example/stlc.tex) as the v0 end-to-end fixture for mixfix abstraction and typing judgments, postfix classifiers, and application.
-4. **Move standalone source mode to LaTeX environments.** Scan for `inference` and `inference-notation`, preserving the text between them verbatim. Collect declarations across the document, then parse and render each rule set through the existing compiler. Use `rule_set` from the opening delimiter as the optional figure caption. Preserve notation bodies as LaTeX comments. Use the `.tex` examples as end-to-end fixtures for this syntax.
-5. **Add the Pandoc JSON filter.** Make filter mode the default for `inference` and use `--source` for LaTeX input on stdin. Use `toJSONFilter` from `pandoc-types` for JSON I/O and handle Pandoc's target-format argument. For `latex`, collect `inference-notation` blocks in a first pass. In a second pass, replace declaration blocks in place with LaTeX comments and render each `inference` block with its optional `rule_set` caption. Preserve surrounding content and metadata. Pass other targets through. Send diagnostics to stderr with a block identifier or ordinal and a block-relative span. Use an external `pandoc` executable for Markdown and Org end-to-end tests. [Pandoc JSON filter protocol](https://pandoc.org/filters.html)
-6. **Add BNF and equation block kinds.** Dispatch body parsing and rendering using `kind` in source options or Pandoc attributes. Model BNF as named syntax groups separated by blank lines. Preserve production rows and let the backend choose horizontal spacing and alignment. Treat every dash-label prefix longer than two dashes equally. Align equation rows and render optional guards with their `--` markers removed. Reject dash labels and dividers in equation blocks.
-7. **Separate the syntax ASTs from LaTeX rendering.** Give inference rules, BNF, and equations their own AST types and share the expression AST across them. Preserve Unicode text and notation identities in the AST. Move LaTeX templates and the character-keyed Unicode mapping into backend rendering data. Make `=>` optional and render a notation from its pattern when the clause is absent. Keep explicit templates as overrides.
-8. **Share compilation across readers.** Adapt the LaTeX scanner and Pandoc traversal to the same source-block input. Assign keys per occurrence and move compilation out of the renderer callbacks in `Inference.Blocks`. Return an ordered inference document and separate LaTeX template configuration. Reuse the existing LaTeX renderer and retain source-mode and filter output as regression baselines.
-9. **Add backend template clauses and HTML rendering.** Parse indented `latex =>` and `html =>` clauses, validate hole references, and reject duplicate backend entries. Keep inline LaTeX templates compatible. Render the same AST to HTML and MathML, then enable Pandoc's HTML targets. Keep LaTeX source mode as an in-place LaTeX rewrite and expose cross-format rendering through an explicit fragment export. Use pattern-based defaults for LaTeX and HTML when the corresponding clause is absent.
-10. **Add standalone notation modules.** Reuse the notation declaration grammar, add import directives, and resolve the module graph through a shared loader for LaTeX and Pandoc JSON. Feed the loaded sources into pure compilation and retain file locations for diagnostics. Share one STLC notation module between the LaTeX example and the Markdown tutorial.
-11. **Explore named backend templates and language exporters.** Associate notation names with backend templates, with the option to retire inline `=>` once the syntax is established. Require explicit mappings for notation applications in other backends. Prototype one language exporter against a documented subset and identify the declarations needed for structured code generation. Add a Unicode printer before promising round trips.
-
-Parse attributed Pandoc inline code with the shared expression parser and document-wide notation. Render it as inline math for LaTeX and inline Unicode or template markup for HTML. Use the [STLC Markdown tutorial](../example/stlc.md) to exercise forward notation in prose. Consider a braced macro for LaTeX source mode once the source scanner handles comments, verbatim text, and balanced macro arguments.
-
-## Proposed libraries
-
-Use the existing Stack `lts-24.60` snapshot and add dependencies to `package.yaml` as each stage needs them. The proposed packages are available in the [LTS 24.60 snapshot](https://www.stackage.org/lts-24.60).
-
-| Scope | Packages | Use |
-| --- | --- | --- |
-| Compiler | `text`, `containers`, `megaparsec` | Unicode input and output, notation lookup tables, source parsing and offsets |
-| CLI | `bytestring`, `optparse-applicative` | Explicit UTF-8 decoding at the I/O boundary, command-line arguments and help |
-| Tests | `tasty`, `tasty-hunit`, `tasty-quickcheck`, `tasty-golden` | Test runner, structural assertions, generated properties, and LaTeX golden files |
-| CLI filter mode | `pandoc-types` | Pandoc AST types, traversal, and JSON filter I/O |
-
-## Test strategy
-
-| Layer | Coverage |
+| Area | Current behavior |
 | --- | --- |
-| Rule syntax fixtures | Cover axioms, multiple premises, named and unnamed rules, separator lengths, line endings, and Unicode identifiers. |
-| Source environments | Cover titled and untitled blocks, empty bodies, forward notation declarations, and diagnostics for nested, mismatched, or unclosed environments. Check that surrounding LaTeX is copied verbatim, declarations become comments, and an omitted `kind` selects one `mathpar` group with an escaped caption when present. |
-| Block kinds and layout | Check named BNF groups, category lists, and alternatives. Verify that `∀ X . A` stays on the second row and changes to horizontal whitespace produce the same layout. Check that `--- Types` and `--------------- Types` name equivalent groups and that `Contexts` starts a separate group after a blank line. Check equation alignment, guarded and unguarded rows, and removal of `--` from displayed guards. Assert diagnostics for missing BNF group names or productions, labels without separating blank lines, orphan continuations, equation dash labels, unknown kinds, missing equation sides, and empty guards. |
-| Reader parity | Compile equivalent LaTeX environments and Pandoc code blocks, then compare their ASTs ignoring host source locations. Check forward declarations and cross-block diagnostic locations. Test replacement in nested Pandoc containers and with repeated or empty identifiers. |
-| Notation modules | Import the same module from LaTeX and Pandoc inputs. Cover project-relative imports, module-relative transitive imports, repeated imports through different paths, missing files, cycles, and conflicts between local and imported declarations. Check that diagnostics identify the relevant file or document block and span. |
-| Backend independence | Render a single compiled fixture to both LaTeX and HTML. Check that each override affects its own backend and that absent LaTeX and HTML overrides use their defaults. Verify a missing mapping in a language exporter reports the application and declaration spans. Cover duplicate clauses, including legacy inline LaTeX combined with a LaTeX clause. |
-| Backend rendering | Check that declarations with and without `=>` parse into the same expression structure. Verify Unicode-to-LaTeX mapping for both atoms and notation literals, explicit template overrides, and rendering of each syntax AST through the LaTeX backend. |
-| Diagnostics | Assert diagnostic kind and primary span for missing conclusions, malformed separators, missing mixfix delimiters, ambiguous patterns, and invalid template references. Include a multibyte character before an error to check the coordinate convention. |
-| Expression tokens | Check that `term` is a declared keyword and `terminal` is an atom, `λ x` starts with a keyword while `λx` is one atom, `∅` is an atom, and declared `<=` wins over `<`. |
-| Expression parsing | Assert tree shape for prefix and postfix patterns, infix associativity, and nested mixfix delimiters. Check that `Γ ⊢ λ x : A . e : A → B` has a lambda in the judgment's term hole and an arrow in its type hole. Check that `x : A` parses as a binding and `x : A → B ∈ Γ, y : C` parses as a lookup with an arrow type and an extended context. Check that `f x y` groups left, `f(x)` matches `f (x)`, and postfix `term` in `e₁ e₂ term` classifies the whole application. |
-| Rendering and CLI | Compare complete `mathpar` fragments for axioms and multiple premises. Cover escaping in labels, correct grouping, and subscripts. Test `--source` with a complete LaTeX document and a fragment. Check UTF-8 decoding failures and output streams on parse failure. Generate golden output through the test runner and review each diff individually. |
-| Properties | Generate valid inputs to check rule structure and separator-length invariance. Once the Unicode printer exists, test parse/print equivalence ignoring source metadata and formatting idempotence. |
-| Pandoc JSON filter | Test JSON input and output, malformed JSON, incompatible AST versions, and pass-through for other targets. Use `pandoc --filter` to check Markdown and Org `kind` selection, `rule_set` captions, and forward notation declarations. Check that every declaration line appears in place as a LaTeX comment and the following content renders. Check that rule errors produce a nonzero exit, block-relative diagnostics on stderr, and no JSON on stdout. |
+| Syntax and AST | Source-spanned inference rules, named BNF groups with continuation rows, guarded equations, and single-expression display blocks. Mixfix notation supports per-hole precedence, infix associativity, and left-associative application. |
+| LaTeX source mode | The CLI reads UTF-8 from stdin with `--source`, rewrites the two recognized environments, and copies surrounding LaTeX verbatim. It emits notation declarations as comments and uses `rule_set` for figure captions. |
+| Pandoc JSON filter | Default CLI mode. Recognizes attributed code blocks and inline code, using the shared parsers and document-wide notation. Supports `latex`, `html`, `html4`, and `html5`. Other targets pass through. |
+| Renderers and templates | LaTeX uses mathpartir, display math, aligned layouts, and Unicode-to-LaTeX conversion. HTML uses escaped Unicode and inline CSS. Both fall back to notation pattern order and accept per-notation backend overrides. Inline `=>` is LaTeX shorthand. |
+| Notation modules | Both adapters resolve transitive imports through `Inference.Modules`. The CLI resolves document imports from `--module-root` or the working directory and nested imports from the importing module. The loader deduplicates by canonical identity before reading and locates import and declaration diagnostics. The STLC examples share a module. |
 
-Use `ormolu` for Haskell formatting and run `stack build` and `stack test` before finishing a stage. Add a failing fixture before fixing a bug. Once the LaTeX backend is usable, add a smoke test that wraps a generated fragment in a minimal document and compiles it in a job with TeX and `mathpartir` installed. Keep the regular Haskell suite independent of TeX.
+## Current dependencies
+
+The project uses Stack with the `lts-24.60` snapshot. Dependencies are declared in `package.yaml`.
+
+| Scope | Packages |
+| --- | --- |
+| Library | text, containers, megaparsec, filepath, transformers |
+| CLI | bytestring, containers, directory, filepath, optparse-applicative, pandoc-types, text, transformers |
+| Test framework | tasty, tasty-hunit, tasty-quickcheck, tasty-golden |
+
+## Current test coverage
+
+| Suite | Coverage |
+| --- | --- |
+| `ParserTests` | Rule structure, line endings, precedence, application, nested delimiters, Unicode token boundaries, backend clause validation, and diagnostic spans. |
+| `BlockTests` and `SourceTests` | BNF row preservation, equation guards and blank rows, display expressions, block options, literal LaTeX pass-through, and source diagnostics. |
+| `LaTeXTests` | Golden fragments, Unicode and script mappings, escaping, and backend override selection. |
+| `FilterTests` | Pandoc AST transformation, mixed block kinds, HTML layout, forward notation, inline attributes, and block-relative diagnostics. |
+| `ModuleTests` | In-memory and filesystem resolution, transitive imports, one read per identity, imported templates, cycles, missing modules, and declaration locations. |
+
+## Future work
+
+1. **Separate compilation from host replacement.** Return parsed sections and inline expressions with occurrence keys and backend templates before rendering. Reuse the existing parsers and module loader. Test equivalent inputs through both readers and render a single parsed result through LaTeX and HTML. Use this API as the basis for explicit fragment export.
+2. **Add a Unicode printer.** Preserve grouping and structured row breaks. Test parse/print equivalence after removing source metadata and check that a second print produces the same text.
+3. **Extend LaTeX inline support.** Evaluate a braced inline command after the scanner can handle balanced arguments and skip comments and verbatim regions.
+4. **Declare and check metavariables.** Define declaration syntax, scope, indexed families, and how schematic positions are identified. Add an opt-in pass over the shared AST that resolves metavariables and checks category constraints where available. Use STLC to test valid uses across premises and conclusions, indexed names, literal atoms, duplicate declarations, undeclared uses, and category mismatches with source spans.
+5. **Prototype a language exporter.** Choose one of Agda, Haskell, or Lean and document its supported subset. Consume the checked representation from stage 4. Require explicit mappings for used notation and test missing mappings with application and declaration locations. Identify the remaining binding and naming metadata needed for declarations and judgments.
+6. **Add end-to-end smoke tests.** Exercise the CLI with the external Pandoc executable for Markdown and Org. Compile a generated LaTeX fragment in a separate job with TeX and mathpartir. Keep the regular Haskell suite independent of TeX.
+7. **Prototype a Wasm editor.** Cross-build the library with GHC's `wasm32-wasi` toolchain and test a small worker-callable wrapper in a browser. Add a Markdown editor with a debounced HTML preview and an in-memory notation resolver. Use the STLC example to check forward notation edits, imported modules, and diagnostics mapped to editor lines.
+
+Use `ormolu` for Haskell formatting and run `stack build` and `stack test` for Haskell changes.

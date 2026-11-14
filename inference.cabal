@@ -6,7 +6,7 @@ cabal-version: 2.2
 
 name:           inference
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/inference#readme>
+description:    Please see the README on GitHub at <https://github.com/Meowcolm024/inference#readme>
 homepage:       https://github.com/Meowcolm024/inference#readme
 bug-reports:    https://github.com/Meowcolm024/inference/issues
 author:         Meowcolm024
