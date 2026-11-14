@@ -32,6 +32,9 @@ data DiagnosticKind
   | MissingSeparator
   | MissingConclusion
   | ExpectedBlankLine
+  | MalformedImport
+  | MissingModule
+  | ImportCycle
   | MalformedDeclaration
   | InvalidPattern
   | MisplacedTemplate

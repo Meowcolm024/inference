@@ -2,7 +2,7 @@ module SourceTests (sourceTests) where
 
 import Data.Text qualified as Text
 import Inference.AST
-import Inference.LaTeX (compileSource)
+import Inference.LaTeX (compileSource, compileSourceWithImports)
 import Inference.Parser
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
@@ -92,8 +92,9 @@ sourceTests =
         Right output -> assertFailure ("Expected a diagnostic, got " <> Text.unpack output)
     checkExample name groups captions = do
       input <- readUtf8 ("example/" <> name <> ".tex")
-      case compileSource input of
-        Left diagnostic -> assertFailure (Text.unpack (formatDiagnostic input diagnostic))
+      result <- compileSourceWithImports "." input
+      case result of
+        Left diagnostic -> assertFailure (Text.unpack diagnostic)
         Right output -> do
           Text.count "\\begin{mathpar}" output @?= groups
           Text.count "\\caption{" output @?= captions

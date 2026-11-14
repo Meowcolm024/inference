@@ -1,4 +1,4 @@
-module Inference.Pandoc (runFilter, compileDocument, compileDocumentFor) where
+module Inference.Pandoc (runFilter, compileDocument, compileDocumentFor, compileDocumentWithImports) where
 
 import Control.Exception (ErrorCall (..), Handler (..), IOException, catches)
 import Control.Monad.Trans.State.Strict (State, StateT (..), evalState, evalStateT, state)
@@ -7,30 +7,32 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
 import Inference.AST (Expr, Notation)
-import Inference.Blocks (BlockCompilationError (..), BlockDiagnostic (..), InferenceBlock (..), InferenceBlockKind (..), compileBlocksWithContext)
+import Inference.Blocks (BlockCompilationError (..), BlockDiagnostic (..), InferenceBlock (..), InferenceBlockKind (..), compileBlocksInScope, compileBlocksWithContext)
 import Inference.HTML (renderHtml, renderHtmlExpression)
 import Inference.LaTeX (renderLatex, renderLatexExpression)
+import Inference.Modules (NotationSourceInput (..), formatModuleDiagnostic, loadNotationScope)
 import Inference.Parser (Diagnostic (..), formatDiagnostic, parseInlineExpression)
-import Inference.Templates (templatesFor)
+import Inference.Templates (BackendTemplates, templatesFor)
 import System.Exit (die, exitFailure)
 import System.IO (hSetBinaryMode, hSetEncoding, stderr, stdin, stdout, utf8)
 import Text.Pandoc.JSON (Block (..), Format (..), Inline (..), MathType (..), Pandoc (..), toJSONFilter)
 import Text.Pandoc.Walk (query, walkM)
 
-runFilter :: Maybe String -> IO ()
-runFilter target = do
+runFilter :: FilePath -> Maybe String -> IO ()
+runFilter root target = do
   hSetBinaryMode stdin True
   hSetBinaryMode stdout True
   hSetEncoding stderr utf8
-  toJSONFilter (filterDocument (Format . Text.pack <$> target))
+  toJSONFilter (filterDocument root (Format . Text.pack <$> target))
     `catches` [ Handler $ \(ErrorCall message) -> die ("inference: " <> message),
                 Handler $ \(failure :: IOException) -> die ("inference: " <> show failure)
               ]
 
-filterDocument :: Maybe Format -> Pandoc -> IO Pandoc
-filterDocument Nothing document = pure document
-filterDocument (Just target) document =
-  case compileDocumentFor target document of
+filterDocument :: FilePath -> Maybe Format -> Pandoc -> IO Pandoc
+filterDocument _ Nothing document = pure document
+filterDocument root (Just target) document = do
+  result <- compileDocumentWithImports root target document
+  case result of
     Right rendered -> pure rendered
     Left message -> Text.hPutStr stderr message >> exitFailure
 
@@ -38,7 +40,27 @@ compileDocument :: Pandoc -> Either Text Pandoc
 compileDocument = compileDocumentFor (Format "latex")
 
 compileDocumentFor :: Format -> Pandoc -> Either Text Pandoc
-compileDocumentFor (Format target) document@(Pandoc metadata blocks)
+compileDocumentFor = compileWithScope Nothing
+
+compileDocumentWithImports :: FilePath -> Format -> Pandoc -> IO (Either Text Pandoc)
+compileDocumentWithImports root target@(Format name) document@(Pandoc _ blocks)
+  | name `notElem` ["latex", "html", "html4", "html5"] = pure (Right document)
+  | otherwise = do
+      let sources =
+            [ NotationSourceInput (blockReference ordinal block) 0 (blockSource block)
+            | (ordinal, block@InferenceBlock {blockKind = NotationBlock}) <- zip [1 ..] (query (maybeToList . inferenceBlock) blocks)
+            ]
+      scope <- loadNotationScope root sources
+      pure $ do
+        (notations, templates, locate) <- either (Left . formatModuleDiagnostic) Right scope
+        let related diagnostic =
+              [ ImportedDiagnostic (locate diagnostic {diagnosticSpan = span', diagnosticMessage = "Competing notation declared here."})
+              | span' <- diagnosticRelated diagnostic
+              ]
+        compileWithScope (Just (notations, templates, related)) target document
+
+compileWithScope :: Maybe ([Notation], BackendTemplates, Diagnostic -> [BlockDiagnostic]) -> Format -> Pandoc -> Either Text Pandoc
+compileWithScope scope (Format target) document@(Pandoc metadata blocks)
   | target == "latex" =
       compile
         renderDeclaration
@@ -54,7 +76,10 @@ compileDocumentFor (Format target) document@(Pandoc metadata blocks)
     compile declaration rules renderExpression = do
       (rendered, expressions) <-
         either (Left . formatCompilationError) Right $
-          compileBlocksWithContext declaration rules compileInlines (query (maybeToList . inferenceBlock) blocks)
+          let inputs = query (maybeToList . inferenceBlock) blocks
+           in case scope of
+                Nothing -> compileBlocksWithContext declaration rules compileInlines inputs
+                Just resolved -> compileBlocksInScope declaration rules compileInlines resolved inputs
       withInlines <- expressions
       pure (Pandoc metadata (evalState (walkM replaceBlock withInlines) rendered))
       where
@@ -109,9 +134,11 @@ formatCompilationError failure =
 
 formatBlockDiagnostic :: BlockDiagnostic -> Text
 formatBlockDiagnostic (BlockDiagnostic Nothing diagnostic) = formatDiagnostic "" diagnostic
+formatBlockDiagnostic (ImportedDiagnostic diagnostic) = formatModuleDiagnostic diagnostic
 formatBlockDiagnostic (BlockDiagnostic (Just (ordinal, block)) diagnostic) =
-  reference <> ":" <> formatDiagnostic (blockSource block) diagnostic
-  where
-    reference
-      | Text.null (blockId block) = "inference block " <> Text.pack (show ordinal)
-      | otherwise = "inference block #" <> blockId block
+  blockReference ordinal block <> ":" <> formatDiagnostic (blockSource block) diagnostic
+
+blockReference :: Int -> InferenceBlock -> Text
+blockReference ordinal block
+  | Text.null (blockId block) = "inference block " <> Text.pack (show ordinal)
+  | otherwise = "inference block #" <> blockId block

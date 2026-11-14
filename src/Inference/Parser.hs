@@ -2,6 +2,7 @@ module Inference.Parser
   ( parseSource,
     parseSourceWithLatexTemplates,
     parseSourceWithTemplates,
+    parseSourceChunks,
     parseNotationBlock,
     parseNotationBlockWithLatexTemplates,
     parseNotationBlockWithTemplates,
@@ -50,11 +51,16 @@ parseSourceWithTemplates input = do
   chunks <- scanEnvironments input
   declarations <- traverse (uncurry bodyLines) [(markers, body) | RawNotation markers body <- chunks]
   (notations, templates) <- parseDeclarations (concat declarations)
-  let table = buildNotationTable notations
-  parsed <- traverse (parseChunk table) chunks
-  pure (SourceDocument notations parsed, templates)
+  document <- parseSourceChunks notations chunks
+  pure (document, templates)
+
+bodyLines :: SectionMarkers -> Text -> Either Diagnostic [Located Text]
+bodyLines markers = sourceLinesAt (sourceLine (spanStart (sectionBeginSpan markers)) + 1)
+
+parseSourceChunks :: [Notation] -> [RawChunk] -> Either Diagnostic SourceDocument
+parseSourceChunks notations chunks =
+  SourceDocument notations <$> traverse (parseChunk (buildNotationTable notations)) chunks
   where
-    bodyLines markers = sourceLinesAt (sourceLine (spanStart (sectionBeginSpan markers)) + 1)
     parseChunk _ (RawLatex latex) = Right (LatexText latex)
     parseChunk _ (RawNotation markers body) = Right (NotationSource markers body)
     parseChunk table (RawRuleSet markers options body) = do

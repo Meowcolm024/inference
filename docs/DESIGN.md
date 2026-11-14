@@ -198,15 +198,15 @@ Notation tokens enter expressions through their declared patterns. They are excl
 
 ### Standalone notation modules
 
-Allow a plain UTF-8 file to contain the same declarations as an `inference-notation` block, without environment delimiters. A module can also import other notation modules. For example, an `inference-notation` block in LaTeX, Markdown, or Org could contain the following directive.
+Allow a plain UTF-8 file to contain the same declarations as an `inference-notation` block, without environment delimiters. A module can also import other notation modules. For example, an `inference-notation` block in LaTeX, Markdown, or Org can consist of just this directive.
 
 ```text
-import "notation/stlc.notation"
+import "stlc.notation"
 ```
 
-The directive and file extension are proposed syntax. Resolve document imports relative to a configurable project directory, defaulting to the process working directory. This gives LaTeX stdin and Pandoc JSON the same behavior, since either input may arrive without a source filename. Resolve imports inside a module relative to that module's directory.
+Write one import per line, with a nonempty quoted relative path. A module file contains UTF-8 notation declarations, backend template clauses, imports, and blank lines. The `.notation` extension is conventional. Resolve document imports relative to the process working directory or the directory supplied with `--module-root`. LaTeX stdin and Pandoc JSON do not provide the document path to the filter. Resolve transitive imports relative to the importing module's directory.
 
-All imported and local declarations share the document-wide notation scope. Load each resolved file once per document, including when several modules import it. Import order grants no precedence. Apply the same validation and ambiguity rules to imported and local patterns and report both declaration locations when relevant. Missing modules and import cycles produce diagnostics at the import directives, with the import chain for context. Imported declarations may carry backend templates under the same rules as local declarations.
+All imported and local declarations share the document-wide notation scope. Load each canonical file once per document, including when several modules import it. Import order grants no precedence. Apply the same validation and ambiguity rules to imported and local patterns and report both declaration locations when relevant. Missing modules and import cycles produce diagnostics at the import directives, with the import chain for context. Imported declarations may carry backend templates under the same rules as local declarations.
 
 ### Application
 

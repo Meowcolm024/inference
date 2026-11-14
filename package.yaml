@@ -10,6 +10,9 @@ extra-source-files:
 - CHANGELOG.md
 - example/*.md
 - example/*.tex
+- example/*.notation
+- test/fixtures/modules/*.notation
+- test/fixtures/modules/*/*.notation
 - test/fixtures/positive/*.rules
 - test/fixtures/negative/*.rules
 - test/fixtures/latex/*.rules
@@ -62,6 +65,7 @@ library:
   - Inference.HTML
   - Inference.LaTeX
   - Inference.LaTeX.Templates
+  - Inference.Modules
   - Inference.Parser
   - Inference.Templates
   other-modules:
@@ -73,7 +77,11 @@ library:
   - Inference.Parser.Options
   - Inference.Parser.Source
   dependencies:
+  - bytestring
   - containers
+  - directory
+  - filepath
+  - transformers
   - megaparsec
   - text
 
@@ -105,6 +113,7 @@ tests:
     - FilterTests
     - Inference.Pandoc
     - LaTeXTests
+    - ModuleTests
     - ParserTests
     - SourceTests
     - TestSupport

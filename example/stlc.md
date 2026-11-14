@@ -63,17 +63,10 @@ $$
 
 ## Source notation
 
-The grammar and rule blocks share these notation declarations and LaTeX templates. The typing judgment is one mixfix pattern with holes for the context, term, and type. Application uses juxtaposition, as in `e₁ e₂`{.inference}.
+The grammar, rules, and inline expressions share the declarations and templates in [stlc.notation](stlc.notation). The import is relative to the repository root when running the command below. The typing judgment is one mixfix pattern with holes for the context, term, and type. Application uses juxtaposition, as in `e₁ e₂`{.inference}.
 
 ```{.inference-notation}
-infixr:60 " → " => "\to"
-infix:55  " : " => ":"
-notation:53 x:atom ":" A:54 "∈" Γ:51 => x " : " A " \in " Γ
-infix:53  " ∉ " => "\notin"
-infixl:52 " , " => ","
-notation:50 Γ:51 "⊢" e:51 ":" A:51 => Γ " \vdash " e " : " A
-notation:56 "λ" x:atom ":" A:0 "." e:56 => "\lambda " x " : " A ".\," e
-notation:10 A:11 "type" => A "\;\mathsf{type}"
+import "example/stlc.notation"
 ```
 
 The Markdown fences and inline expressions use the [Pandoc filter format](../docs/DESIGN.md#4-pandoc-json-filter). After `stack build`, render this tutorial from the repository root.

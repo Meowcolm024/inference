@@ -1,0 +1,2 @@
+infixr:60 "→"
+  html => lhs " <b>→</b> " rhs

@@ -1,4 +1,4 @@
-module Inference.LaTeX (compileSource, renderSourceLatex, renderLatex, renderLatexExpression) where
+module Inference.LaTeX (compileSource, compileSourceWithImports, parseSourceWithImports, renderSourceLatex, renderLatex, renderLatexExpression) where
 
 import Data.Char (isLetter)
 import Data.List (intersperse)
@@ -11,12 +11,46 @@ import Data.Text qualified as Text
 import Inference.AST
 import Inference.LaTeX.Templates (LatexTemplates, TemplatePart (..))
 import Inference.LaTeX.Unicode (escapeTextChar, joinLatex, renderMathText)
-import Inference.Parser (Diagnostic (..), DiagnosticKind (..), parseSourceWithLatexTemplates)
+import Inference.Modules (ModuleDiagnostic (..), NotationSourceInput (..), formatModuleDiagnostic, loadNotationScope)
+import Inference.Parser (Diagnostic (..), DiagnosticKind (..), formatDiagnostic, parseSourceChunks, parseSourceWithLatexTemplates)
+import Inference.Parser.Environment (RawChunk (..), scanEnvironments)
+import Inference.Templates (templatesFor)
 
 compileSource :: Text -> Either Diagnostic Text
 compileSource input = do
   (document, templates) <- parseSourceWithLatexTemplates input
   renderSourceLatex templates document
+
+compileSourceWithImports :: FilePath -> Text -> IO (Either Text Text)
+compileSourceWithImports root input = do
+  parsed <- parseSourceWithImports root input
+  pure $ do
+    (document, templates) <- parsed
+    either (Left . ("stdin:" <>) . formatDiagnostic input) Right (renderSourceLatex templates document)
+
+parseSourceWithImports :: FilePath -> Text -> IO (Either Text (SourceDocument, LatexTemplates))
+parseSourceWithImports root input = case scanEnvironments input of
+  Left diagnostic -> pure (Left (formatModuleDiagnostic (ModuleDiagnostic host diagnostic)))
+  Right chunks -> do
+    let bodies =
+          [ NotationSourceInput "stdin" (sourceLine (spanStart (sectionBeginSpan markers))) body
+          | RawNotation markers body <- chunks
+          ]
+    scope <- loadNotationScope root bodies
+    pure $ do
+      (notations, templates, locate) <- either (Left . formatModuleDiagnostic . withHost) Right scope
+      let report diagnostic =
+            "stdin:"
+              <> formatDiagnostic input diagnostic {diagnosticRelated = []}
+              <> foldMap (formatModuleDiagnostic . withHost . locate . related diagnostic) (diagnosticRelated diagnostic)
+      document <- either (Left . report) Right (parseSourceChunks notations chunks)
+      pure (document, templatesFor "latex" templates)
+  where
+    host = NotationSourceInput "stdin" 0 input
+    withHost (ModuleDiagnostic origin diagnostic)
+      | notationSourceName origin == "stdin" = ModuleDiagnostic host diagnostic
+      | otherwise = ModuleDiagnostic origin diagnostic
+    related diagnostic span' = diagnostic {diagnosticSpan = span', diagnosticMessage = "Competing notation declared here."}
 
 renderSourceLatex :: LatexTemplates -> SourceDocument -> Either Diagnostic Text
 renderSourceLatex templates document = do

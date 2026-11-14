@@ -5,6 +5,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Inference.AST
+import Inference.LaTeX (parseSourceWithImports)
 import Inference.LaTeX.Templates (TemplatePart (..))
 import Inference.Parser
 import Inference.Templates (templatesFor)
@@ -226,7 +227,8 @@ exampleTests =
   where
     example name expected = testCase name $ do
       input <- readUtf8 ("example/" <> name <> ".tex")
-      document <- parsedSource input
+      result <- parseSourceWithImports "." input
+      document <- either (assertFailure . Text.unpack) (pure . fst) result
       map (\section -> (sectionTitle section, countBody (sectionBody section))) (sourceSections document)
         @?= [(Just title, count) | (title, count) <- expected]
 

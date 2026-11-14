@@ -4,7 +4,7 @@ import Data.ByteString.Lazy qualified as ByteString
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Encoding
 import Inference.AST
-import Inference.LaTeX (compileSource, renderLatex)
+import Inference.LaTeX (compileSource, compileSourceWithImports, renderLatex)
 import Inference.Parser
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden (goldenVsString)
@@ -19,7 +19,7 @@ latexTests =
       golden "BNF groups and continuation alignment" "test/fixtures/latex/bnf.rules" "bnf",
       golden "aligned equations and guards" "test/fixtures/latex/equations.rules" "equations",
       golden "untyped lambda calculus" "example/untyped-lambda.tex" "untyped-lambda",
-      golden "simply typed lambda calculus" "example/stlc.tex" "stlc",
+      goldenWith (compileSourceWithImports ".") "simply typed lambda calculus" "example/stlc.tex" "stlc",
       golden "section order, omitted empty sections, and caption escaping" "test/fixtures/latex/sections.rules" "sections",
       testCase "infix and mixfix default to pattern order with Unicode mapping and escaping" $ do
         let input = oneRule ["infixr:60 \"→\"", "notation:50 Γ:51 \"⊢\" e:51 \":\" A:51"] "Γ ⊢ e₁ : ι → A_name"
@@ -100,9 +100,11 @@ latexTests =
           Right latex -> assertFailure ("Expected a diagnostic, rendered " <> Text.unpack latex)
     ]
   where
-    golden title inputPath name =
+    golden = goldenWith (\input -> pure (either (Left . formatDiagnostic input) Right (compileSource input)))
+    goldenWith compile title inputPath name =
       goldenVsString title ("test/fixtures/latex/" <> name <> ".tex") $ do
         input <- readUtf8 inputPath
-        case compileSource input of
-          Left diagnostic -> assertFailure (Text.unpack (formatDiagnostic input diagnostic))
+        result <- compile input
+        case result of
+          Left diagnostic -> assertFailure (Text.unpack diagnostic)
           Right latex -> pure (ByteString.fromStrict (Encoding.encodeUtf8 latex))

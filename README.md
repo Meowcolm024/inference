@@ -46,6 +46,12 @@ In BNF, `::=` and `|` are grammar keywords. Start each group with a name after t
 
 In equations, the first outer `=` is a grammar keyword. Both sides use the shared notation table. A whitespace-separated `--` introduces a guard, and an initial `if` is rendered upright. Guard conditions use ordinary notation, so the equality declaration above is needed for `x = y` inside the guard. Blank source rows remain separated in the output. Parentheses and mixfix delimiters protect separators inside expressions.
 
+## Notation modules
+
+Put `import "example/stlc.notation"` inside an `inference-notation` environment or a Pandoc notation block. The [LaTeX example](example/stlc.tex) and [Markdown tutorial](example/stlc.md) use the same module. A module is a plain UTF-8 file containing notation declarations, their backend templates, and optional imports.
+
+Document imports resolve relative to the current working directory. For direct CLI calls, use `--module-root DIRECTORY` to choose a different base. Imports inside a module resolve relative to that module's directory. The loader follows transitive imports, loads each file once, and reports missing files or cycles at the import directive.
+
 ## Run the CLI
 
 By default, `inference` runs as a Pandoc JSON filter. Use Pandoc Markdown or Org as input and `latex`, `html`, `html4`, or `html5` as output.
@@ -113,10 +119,9 @@ From the repository root, run `stack repl inference:lib` and enter these command
 
 ```haskell
 import qualified Data.Text.IO as Text
-import Inference.LaTeX (compileSource)
-import Inference.Parser (formatDiagnostic)
+import Inference.LaTeX (compileSourceWithImports)
 source <- Text.readFile "example/stlc.tex"
-either (Text.putStr . formatDiagnostic source) Text.putStr (compileSource source)
+compileSourceWithImports "." source >>= either Text.putStr Text.putStr
 ```
 
 On invalid input, `formatDiagnostic` explains the error and highlights its location. For an ambiguous expression, it also highlights the competing declarations.
