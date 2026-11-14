@@ -1,6 +1,20 @@
 # Wasm compiler and web editor
 
-The browser would reuse the Haskell compiler and HTML renderer through a small GHC Wasm wrapper. The library already cross-builds for `wasm32-wasi`. The wrapper, browser runtime, and editor are proposed.
+The GHC Wasm wrapper in `wasm/` reuses the Haskell compiler and HTML renderer. The browser editor and worker integration are proposed.
+
+## Build and smoke test
+
+From the repository root, enter the toolchain shell with `nix develop path:.`. Run the following in that shell.
+
+```sh
+cd wasm
+wasm32-wasi-cabal build exe:inference-wasm
+binary=$(wasm32-wasi-cabal list-bin exe:inference-wasm)
+node "$(wasm32-wasi-ghc --print-libdir)/post-link.mjs" -i "$binary" -o dist-newstyle/bindings.mjs
+npm install --prefix dist-newstyle --ignore-scripts @bjorn3/browser_wasi_shim@0.4.2
+node smoke.mjs "$binary" dist-newstyle/bindings.mjs \
+  dist-newstyle/node_modules/@bjorn3/browser_wasi_shim/dist/index.js
+```
 
 ## Compiler API
 
@@ -39,16 +53,15 @@ type Diagnostic = {
   related: { message: string; location: Location }[];
 };
 
-type PreviewResponse = { revision: number } & (
-  | { status: "ok"; fragments: { key: string; html: string }[] }
-  | { status: "invalid"; diagnostics: Diagnostic[] }
-  | { status: "error"; message: string }
-);
+type PreviewResponse =
+  | { revision: number; status: "ok"; fragments: { key: string; html: string }[] }
+  | { revision: number; status: "invalid"; diagnostics: Diagnostic[] }
+  | { revision: number | null; status: "error"; message: string };
 ```
 
 Send items in document order. Keys identify occurrences within a revision, including when author IDs repeat. Keep attribute pairs ordered and pass them through to the Haskell option parser. Each successful response has one fragment per renderable item. Notation items contribute to the scope and produce no fragment. The initial implementation can return the first compiler error and its related locations. Use the error response for malformed requests or runtime failures.
 
-Build one notation scope from all declarations and imports, then compile sections with `compileBlocksInScope` and parse inline expressions against the same scope. Use `renderHtml` and `renderHtmlExpression` with the HTML templates. Implement `NotationResolver` over project-relative module keys. Resolve nested paths relative to the importing module, normalize aliases for deduplication, and report missing modules and paths that escape the project root. Module text comes from the editor's file map.
+The wrapper builds one notation scope from all declarations and imports, then parses sections and inline expressions against that scope in document order. It uses `renderHtml` and `renderHtmlExpression` with the HTML templates. The in-memory `NotationResolver` resolves nested imports relative to the importing module, normalizes aliases for deduplication, and reports missing modules and paths that escape the project root.
 
 Locations use one-based lines and Unicode code-point columns with exclusive ends. The Markdown adapter keeps a map from each extracted body to document offsets. Account for stripped container prefixes, fence indentation, inline whitespace normalization, and conversion to the editor's UTF-16 offsets. Imported diagnostics identify the project file directly.
 
