@@ -1,30 +1,28 @@
 module Inference.Modules
   ( NotationSourceInput (..),
     ModuleDiagnostic (..),
+    NotationResolver,
     formatModuleDiagnostic,
     loadNotationScope,
   )
 where
 
-import Control.Exception (IOException, try)
 import Control.Monad (foldM, guard)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
-import Data.ByteString qualified as Bytes
 import Data.Char (isSpace)
 import Data.IntMap.Strict qualified as IntMap
 import Data.List (intercalate, mapAccumL)
+import Data.Maybe (listToMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Text.Encoding qualified as Encoding
 import Inference.AST
 import Inference.Parser (parseNotationBlockWithTemplates)
 import Inference.Parser.Source
 import Inference.Templates (BackendTemplates)
-import System.Directory (canonicalizePath)
-import System.FilePath (isRelative, takeDirectory, (</>))
+import System.FilePath (isRelative)
 
 data NotationSourceInput = NotationSourceInput
   { notationSourceName :: Text,
@@ -40,14 +38,20 @@ formatModuleDiagnostic :: ModuleDiagnostic -> Text
 formatModuleDiagnostic (ModuleDiagnostic source diagnostic) =
   notationSourceName source <> ":" <> formatDiagnostic (notationSourceText source) diagnostic
 
+-- The resolver receives the importing module identity, or Nothing for the host
+-- document, and the requested relative path. Return a stable identity and a
+-- read action so cycles and duplicate imports can be detected before reading.
+type NotationResolver m = Maybe FilePath -> FilePath -> m (Either Text (FilePath, m (Either Text Text)))
+
 -- The returned function maps declaration spans in the shared notation scope
 -- back to their source. Expression spans already refer to the host document.
 loadNotationScope ::
-  FilePath ->
+  (Monad m) =>
+  NotationResolver m ->
   [NotationSourceInput] ->
-  IO (Either ModuleDiagnostic ([Notation], BackendTemplates, Diagnostic -> ModuleDiagnostic))
-loadNotationScope root inputs = runExceptT $ do
-  (_, sources) <- foldM (expand root []) (Set.empty, []) inputs
+  m (Either ModuleDiagnostic ([Notation], BackendTemplates, Diagnostic -> ModuleDiagnostic))
+loadNotationScope resolve inputs = runExceptT $ do
+  (_, sources) <- foldM (expand resolve []) (Set.empty, []) inputs
   let ordered = reverse sources
       merged = Text.concat [notationSourceText source <> "\r\n\n" | (source, _) <- ordered]
       origins = IntMap.fromDistinctAscList (snd (mapAccumL indexSource 1 ordered))
@@ -66,12 +70,14 @@ loadNotationScope root inputs = runExceptT $ do
       (start + Text.count "\n" (notationSourceText source) + 2, (start, entry))
 
 expand ::
-  FilePath ->
+  forall m.
+  (Monad m) =>
+  NotationResolver m ->
   [FilePath] ->
   (Set FilePath, [(NotationSourceInput, NotationSourceInput)]) ->
   NotationSourceInput ->
-  ExceptT ModuleDiagnostic IO (Set FilePath, [(NotationSourceInput, NotationSourceInput)])
-expand base chain initial source = do
+  ExceptT ModuleDiagnostic m (Set FilePath, [(NotationSourceInput, NotationSourceInput)])
+expand resolve chain initial source = do
   (seen, loaded, lines') <- foldM visit (fst initial, snd initial, []) (zip [1 ..] (Text.splitOn "\n" (notationSourceText source)))
   let cleaned = source {notationSourceText = Text.intercalate "\n" (reverse lines')}
   pure (seen, (cleaned, source) : loaded)
@@ -83,7 +89,7 @@ expand base chain initial source = do
           let line = number + notationSourceOffset source
               column = Text.length raw - Text.length (Text.stripStart raw) + 1
               span' = lineSpan (SourcePosition line column) 0 (Text.length (Text.strip raw))
-              failure :: DiagnosticKind -> Text -> ExceptT ModuleDiagnostic IO a
+              failure :: DiagnosticKind -> Text -> ExceptT ModuleDiagnostic m a
               failure kind message = throwE (ModuleDiagnostic source (Diagnostic kind span' message []))
               request = do
                 guard (maybe False (isSpace . fst) (Text.uncons suffix))
@@ -94,20 +100,19 @@ expand base chain initial source = do
                 pure (Text.unpack path)
           path <- maybe (failure MalformedImport "Expected import with a nonempty quoted relative path.") pure request
           let trace ending = Text.pack (intercalate " -> " (chain ++ [ending]))
-              missing :: FilePath -> Text -> ExceptT ModuleDiagnostic IO a
+              missing :: FilePath -> Text -> ExceptT ModuleDiagnostic m a
               missing ending reason = failure MissingModule ("Cannot import " <> trace ending <> ". " <> reason)
-          canonical <- lift (try @IOException (canonicalizePath (base </> path))) >>= either (missing path . Text.pack . show) pure
+          (canonical, readSource) <- lift (resolve (listToMaybe (reverse chain)) path) >>= either (missing path) pure
           if canonical `elem` chain
             then failure ImportCycle ("Notation import cycle: " <> trace canonical <> ".")
             else
               if Set.member canonical seen
                 then pure (seen, loaded, "" : lines')
                 else do
-                  bytes <- lift (try @IOException (Bytes.readFile canonical)) >>= either (missing canonical . Text.pack . show) pure
-                  body <- either (const (missing canonical "Invalid UTF-8.")) pure (Encoding.decodeUtf8' bytes)
+                  body <- lift readSource >>= either (missing canonical) pure
                   (nextSeen, nextLoaded) <-
                     expand
-                      (takeDirectory canonical)
+                      resolve
                       (chain ++ [canonical])
                       (Set.insert canonical seen, loaded)
                       (NotationSourceInput (Text.pack canonical) 0 body)

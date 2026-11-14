@@ -2,6 +2,7 @@ module SourceTests (sourceTests) where
 
 import Data.Text qualified as Text
 import Inference.AST
+import Inference.FileSystem (fileSystemResolver)
 import Inference.LaTeX (compileSource, compileSourceWithImports)
 import Inference.Parser
 import Test.Tasty (TestTree, testGroup)
@@ -92,7 +93,7 @@ sourceTests =
         Right output -> assertFailure ("Expected a diagnostic, got " <> Text.unpack output)
     checkExample name groups captions = do
       input <- readUtf8 ("example/" <> name <> ".tex")
-      result <- compileSourceWithImports "." input
+      result <- compileSourceWithImports (fileSystemResolver ".") input
       case result of
         Left diagnostic -> assertFailure (Text.unpack diagnostic)
         Right output -> do

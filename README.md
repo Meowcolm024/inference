@@ -117,13 +117,10 @@ LaTeX and HTML each use their own override when present and otherwise render the
 
 Use `parseSourceWithLatexTemplates` with `renderSourceLatex` to keep parsing and rendering separate. When parsing individual blocks, use `parseNotationBlockWithLatexTemplates` to obtain the syntax declarations and LaTeX templates, then pass the declarations to `parseBlockSection` and the templates to `renderLatex` alongside the assembled `Document`. Supply `mempty` for the templates to use pattern-based rendering throughout. Use `parseSourceWithTemplates` or `parseNotationBlockWithTemplates` to obtain overrides for all declared backends, and `Inference.Templates.templatesFor` to select one backend.
 
-From the repository root, run `stack repl inference:lib` and enter these commands.
+For documents with notation imports, pass a `NotationResolver` from `Inference.Modules` to `compileSourceWithImports`. The resolver receives the importing module's identity and the requested relative path. It returns a stable identity and an action that reads the source. The CLI supplies a filesystem resolver and uses `--module-root` for imports from the input document.
 
-```haskell
-import qualified Data.Text.IO as Text
-import Inference.LaTeX (compileSourceWithImports)
-source <- Text.readFile "example/stlc.tex"
-compileSourceWithImports "." source >>= either Text.putStr Text.putStr
+```sh
+stack exec inference -- --source --module-root . < example/stlc.tex
 ```
 
 On invalid input, `formatDiagnostic` explains the error and highlights its location. For an ambiguous expression, it also highlights the competing declarations.

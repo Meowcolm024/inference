@@ -6,6 +6,7 @@ import Data.ByteString qualified as ByteString
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Encoding
+import Inference.FileSystem (fileSystemResolver)
 import Inference.LaTeX (compileSourceWithImports)
 import Inference.Pandoc (runFilter)
 import Options.Applicative (Parser, execParser, flag', footer, fullDesc, help, helper, info, long, metavar, progDesc, strArgument, strOption, value)
@@ -48,7 +49,7 @@ runSource root = do
     Right bytes -> case Encoding.decodeUtf8' bytes of
       Left _ -> failWith "stdin: invalid UTF-8 input.\n"
       Right input -> do
-        compiled <- compileSourceWithImports root input
+        compiled <- compileSourceWithImports (fileSystemResolver root) input
         case compiled of
           Left message -> failWith message
           Right latex -> ByteString.hPut stdout (Encoding.encodeUtf8 latex)

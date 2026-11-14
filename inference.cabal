@@ -90,9 +90,7 @@ library
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wunused-imports -fprint-explicit-foralls -fprint-explicit-kinds
   build-depends:
       base >=4.7 && <5
-    , bytestring
     , containers
-    , directory
     , filepath
     , megaparsec
     , text
@@ -102,6 +100,7 @@ library
 executable inference
   main-is: Main.hs
   other-modules:
+      Inference.FileSystem
       Inference.Pandoc
       Paths_inference
   autogen-modules:
@@ -124,6 +123,8 @@ executable inference
       base >=4.7 && <5
     , bytestring
     , containers
+    , directory
+    , filepath
     , inference
     , optparse-applicative
     , pandoc-types
@@ -137,6 +138,7 @@ test-suite inference-test
   other-modules:
       BlockTests
       FilterTests
+      Inference.FileSystem
       Inference.Pandoc
       LaTeXTests
       ModuleTests
@@ -162,6 +164,8 @@ test-suite inference-test
       base >=4.7 && <5
     , bytestring
     , containers
+    , directory
+    , filepath
     , inference
     , pandoc-types
     , tasty

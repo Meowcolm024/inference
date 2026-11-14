@@ -8,6 +8,7 @@ import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
 import Inference.AST (Expr, Notation)
 import Inference.Blocks (BlockCompilationError (..), BlockDiagnostic (..), InferenceBlock (..), InferenceBlockKind (..), compileBlocksInScope, compileBlocksWithContext)
+import Inference.FileSystem (fileSystemResolver)
 import Inference.HTML (renderHtml, renderHtmlExpression)
 import Inference.LaTeX (renderLatex, renderLatexExpression)
 import Inference.Modules (NotationSourceInput (..), formatModuleDiagnostic, loadNotationScope)
@@ -50,7 +51,7 @@ compileDocumentWithImports root target@(Format name) document@(Pandoc _ blocks)
             [ NotationSourceInput (blockReference ordinal block) 0 (blockSource block)
             | (ordinal, block@InferenceBlock {blockKind = NotationBlock}) <- zip [1 ..] (query (maybeToList . inferenceBlock) blocks)
             ]
-      scope <- loadNotationScope root sources
+      scope <- loadNotationScope (fileSystemResolver root) sources
       pure $ do
         (notations, templates, locate) <- either (Left . formatModuleDiagnostic) Right scope
         let related diagnostic =

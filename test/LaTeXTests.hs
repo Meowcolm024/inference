@@ -4,6 +4,7 @@ import Data.ByteString.Lazy qualified as ByteString
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Encoding
 import Inference.AST
+import Inference.FileSystem (fileSystemResolver)
 import Inference.LaTeX (compileSource, compileSourceWithImports, renderLatex)
 import Inference.Parser
 import Test.Tasty (TestTree, testGroup)
@@ -19,7 +20,7 @@ latexTests =
       golden "BNF groups and continuation alignment" "test/fixtures/latex/bnf.rules" "bnf",
       golden "aligned equations and guards" "test/fixtures/latex/equations.rules" "equations",
       golden "untyped lambda calculus" "example/untyped-lambda.tex" "untyped-lambda",
-      goldenWith (compileSourceWithImports ".") "simply typed lambda calculus" "example/stlc.tex" "stlc",
+      goldenWith (compileSourceWithImports (fileSystemResolver ".")) "simply typed lambda calculus" "example/stlc.tex" "stlc",
       golden "section order, omitted empty sections, and caption escaping" "test/fixtures/latex/sections.rules" "sections",
       testCase "infix and mixfix default to pattern order with Unicode mapping and escaping" $ do
         let input = oneRule ["infixr:60 \"→\"", "notation:50 Γ:51 \"⊢\" e:51 \":\" A:51"] "Γ ⊢ e₁ : ι → A_name"

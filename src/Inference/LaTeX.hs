@@ -12,7 +12,7 @@ import Data.Text qualified as Text
 import Inference.AST
 import Inference.LaTeX.Templates (LatexTemplates, TemplatePart (..))
 import Inference.LaTeX.Unicode (escapeTextChar, joinLatex, renderMathText)
-import Inference.Modules (ModuleDiagnostic (..), NotationSourceInput (..), formatModuleDiagnostic, loadNotationScope)
+import Inference.Modules (ModuleDiagnostic (..), NotationResolver, NotationSourceInput (..), formatModuleDiagnostic, loadNotationScope)
 import Inference.Parser (Diagnostic (..), DiagnosticKind (..), formatDiagnostic, parseSourceChunks, parseSourceWithLatexTemplates)
 import Inference.Parser.Environment (RawChunk (..), scanEnvironments)
 import Inference.Templates (templatesFor)
@@ -22,22 +22,22 @@ compileSource input = do
   (document, templates) <- parseSourceWithLatexTemplates input
   renderSourceLatex templates document
 
-compileSourceWithImports :: FilePath -> Text -> IO (Either Text Text)
-compileSourceWithImports root input = do
-  parsed <- parseSourceWithImports root input
+compileSourceWithImports :: (Monad m) => NotationResolver m -> Text -> m (Either Text Text)
+compileSourceWithImports resolve input = do
+  parsed <- parseSourceWithImports resolve input
   pure $ do
     (document, templates) <- parsed
     either (Left . ("stdin:" <>) . formatDiagnostic input) Right (renderSourceLatex templates document)
 
-parseSourceWithImports :: FilePath -> Text -> IO (Either Text (SourceDocument, LatexTemplates))
-parseSourceWithImports root input = case scanEnvironments input of
+parseSourceWithImports :: (Monad m) => NotationResolver m -> Text -> m (Either Text (SourceDocument, LatexTemplates))
+parseSourceWithImports resolve input = case scanEnvironments input of
   Left diagnostic -> pure (Left (formatModuleDiagnostic (ModuleDiagnostic host diagnostic)))
   Right chunks -> do
     let bodies =
           [ NotationSourceInput "stdin" (sourceLine (spanStart (sectionBeginSpan markers))) body
           | RawNotation markers body <- chunks
           ]
-    scope <- loadNotationScope root bodies
+    scope <- loadNotationScope resolve bodies
     pure $ do
       (notations, templates, locate) <- either (Left . formatModuleDiagnostic . withHost) Right scope
       let report diagnostic =

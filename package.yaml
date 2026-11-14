@@ -77,9 +77,7 @@ library:
   - Inference.Parser.Options
   - Inference.Parser.Source
   dependencies:
-  - bytestring
   - containers
-  - directory
   - filepath
   - transformers
   - megaparsec
@@ -97,6 +95,8 @@ executables:
     - inference
     - bytestring
     - containers
+    - directory
+    - filepath
     - optparse-applicative
     - pandoc-types
     - text
@@ -111,6 +111,7 @@ tests:
     other-modules:
     - BlockTests
     - FilterTests
+    - Inference.FileSystem
     - Inference.Pandoc
     - LaTeXTests
     - ModuleTests
@@ -125,6 +126,8 @@ tests:
     - inference
     - bytestring
     - containers
+    - directory
+    - filepath
     - pandoc-types
     - tasty
     - tasty-golden
