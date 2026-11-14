@@ -22,7 +22,7 @@ notation:50 Γ:51 "⊢" e:51 ":" A:51
 \end{inference}
 ```
 
-Set `kind=bnf` or `kind=equation` on an `inference` environment to select another body grammar. Omit `kind` for inference rules. Options are separated by commas. Brace a caption containing a comma, as in `rule_set={Types, terms}`.
+Set `kind=bnf`, `kind=equation`, or `kind=expr` on an `inference` environment to select another body grammar. Omit `kind` for inference rules. Options are separated by commas. Brace a caption containing a comma, as in `rule_set={Types, terms}`.
 
 ```text
 \begin{inference-notation}
@@ -45,6 +45,8 @@ x = x
 In BNF, `::=` and `|` are grammar keywords. Start each group with a name after three or more dashes, and separate groups with a blank line. Rows beginning with `|` continue the preceding production. The renderer preserves row breaks, omits the leading bar, and aligns the alternatives in the same column regardless of source indentation.
 
 In equations, the first outer `=` is a grammar keyword. Both sides use the shared notation table. A whitespace-separated `--` introduces a guard, and an initial `if` is rendered upright. Guard conditions use ordinary notation, so the equality declaration above is needed for `x = y` inside the guard. Blank source rows remain separated in the output. Parentheses and mixfix delimiters protect separators inside expressions.
+
+Use `kind=expr` to display a single Unicode expression with the document's notation. In Markdown, use a fence with `{.inference kind=expr}` as shown in the [STLC tutorial](example/stlc.md).
 
 ## Notation modules
 

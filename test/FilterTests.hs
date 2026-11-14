@@ -37,6 +37,22 @@ filterTests =
             assertBool "defaults to inference rules" (Text.isInfixOf "\\inferrule" rule)
             assertBool "keeps notation comments" (Text.isPrefixOf "% infixr" declaration)
           other -> assertFailure (show other),
+      testCase "display expression blocks render directly in LaTeX and HTML" $ do
+        let input =
+              Pandoc
+                nullMeta
+                [ CodeBlock ("identity", ["inference"], [("kind", "expr")]) "ι → ι",
+                  CodeBlock ("", ["inference-notation"], []) "infixr:60 \"→\"\n  html => lhs \" <b>→</b> \" rhs"
+                ]
+        case compileDocument input of
+          Right (Pandoc _ [RawBlock (Format "latex") display, RawBlock _ _]) ->
+            display @?= "\\[\n\\iota\\to\\iota\n\\]\n"
+          other -> assertFailure (show other)
+        case compileDocumentFor (Format "html5") input of
+          Right (Pandoc _ [Div ("identity", [], []) [RawBlock (Format "html") display], RawBlock _ _]) ->
+            assertBool "renders a centered expression using the HTML override" $
+              all (`Text.isInfixOf` display) ["text-align:center", "font-style:normal", "ι <b>→</b> ι"]
+          other -> assertFailure (show other),
       testCase "inline expressions use forward notation and keep surrounding prose and attributes" $ do
         let source = "infixr:60 \"→\"\n  latex => lhs \"\\Rightarrow \" rhs\n  html => lhs \" <b>→</b> \" rhs\ninfix:50 \"<\""
             ordinaryCode = Code ("", [], []) "A → B"
@@ -61,7 +77,7 @@ filterTests =
           @?= Right
             ( Pandoc
                 nullMeta
-                [ paragraph [Span attr [RawInline (Format "html") "ι <b>→</b> B"], Space, RawInline (Format "html") "A &lt; B"],
+                [ paragraph [Span attr [RawInline (Format "html") "<span style=\"font-style:normal\">ι <b>→</b> <span style=\"font-style:italic\">B</span></span>"], Space, RawInline (Format "html") "<span style=\"font-style:normal\"><span style=\"font-style:italic\">A</span> &lt; <span style=\"font-style:italic\">B</span></span>"],
                   RawBlock (Format "html") ""
                 ]
             )
@@ -130,7 +146,7 @@ filterTests =
                 (Meta (Map.singleton "title" (MetaString "Kept")))
                 [ prose,
                   CodeBlock ("rule", ["inference"], [("rule_set", "Types & <terms>")]) "A < B\n──── Intro <&>\nA → B",
-                  CodeBlock ("", ["inference"], []) "──── Base\nι",
+                  CodeBlock ("", ["inference"], []) "──── Base\nx2ι",
                   CodeBlock ("", ["inference"], [("kind", "bnf")]) "--- Types & terms\nA ::= X | Y\n  | X → X",
                   CodeBlock ("", ["inference"], [("kind", "equation")]) "x = y -- if x < y\n\nz = z",
                   CodeBlock ("", ["inference-notation"], []) "infixr:60 \"→\" => \"\\to\"\n  html => lhs \" <b>→</b> \" rhs\ninfix:50 \"<\""
@@ -144,14 +160,14 @@ filterTests =
             metadata @?= Meta (Map.singleton "title" (MetaString "Kept"))
             kept @?= prose
             ruleFormat @?= Format "html"
-            assertBool "renders a labeled rule and escapes source text" (all (`Text.isInfixOf` rule) ["border-top:", "A &lt; B", "Intro &lt;&amp;&gt;", "<figcaption", "Types &amp; &lt;terms&gt;"])
-            assertBool "uses the forward HTML template" ("A <b>→</b> B" `Text.isInfixOf` rule)
-            assertBool "renders a Unicode axiom with a bar and label" (all (`Text.isInfixOf` axiom) ["border-top:", "ι", "Base"])
+            assertBool "renders a labeled rule and escapes source text" (all (`Text.isInfixOf` rule) ["justify-content:center;align-items:center", "border-top:", "<span style=\"font-style:italic\">A</span> &lt; <span style=\"font-style:italic\">B</span>", "Intro &lt;&amp;&gt;", "<figcaption", "Types &amp; &lt;terms&gt;"])
+            assertBool "uses the forward HTML template" ("<span style=\"font-style:italic\">A</span> <b>→</b> <span style=\"font-style:italic\">B</span>" `Text.isInfixOf` rule)
+            assertBool "renders a Unicode axiom with a bar and label" (all (`Text.isInfixOf` axiom) ["border-top:", "<span style=\"font-style:italic\">x2</span>ι", "Base"])
             assertBool "omits the axiom's empty premises row" (not ("grid-area:1/1" `Text.isInfixOf` axiom))
-            assertBool "renders a named BNF table with a continuation row" (all (`Text.isInfixOf` bnf) ["<table", "Types &amp; terms", "::=", "<tr><td", "X <b>→</b> X"])
+            assertBool "renders a named BNF table with a continuation row" (all (`Text.isInfixOf` bnf) ["<table", "margin:.5em auto", "Types &amp; terms", "::=", "<tr><td", "<span style=\"font-style:italic\">X</span> <b>→</b> <span style=\"font-style:italic\">X</span>"])
             assertBool "adds spacing around both BNF separators" (all (`Text.isInfixOf` bnf) ["padding-inline:2pt\">::=</span>", "padding-inline:2pt\">|</span>"])
             Text.count "<tr>" bnf @?= 2
-            assertBool "renders an equation guard and spacer row" (all (`Text.isInfixOf` equation) ["<table", "if x &lt; y", "colspan=\"4\""])
+            assertBool "renders an equation guard and spacer row" (all (`Text.isInfixOf` equation) ["<table", "margin:.5em auto", "if <span style=\"font-style:normal\"><span style=\"font-style:italic\">x</span> &lt; <span style=\"font-style:italic\">y</span></span>", "colspan=\"4\""])
             declaration @?= ""
           other -> assertFailure (show other)
     ]

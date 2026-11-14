@@ -136,6 +136,10 @@ parseBody :: NotationTable -> BlockKind -> [Located Text] -> Either Diagnostic B
 parseBody table = \case
   BnfKind -> fmap BnfGroups . parseBnf table
   EquationKind -> fmap Equations . parseEquations table
+  ExprKind -> \lines' -> case filter (not . Text.null . locatedValue) lines' of
+    [] -> Right (DisplayExpression Nothing)
+    [line] -> DisplayExpression . Just <$> parseExpression table line
+    _ : extra : _ -> Left (Diagnostic UnexpectedToken (location extra) "Expected one expression in a display expression block." [])
   InferenceKind -> \lines' -> do
     traverse_ rejectDash lines'
     InferenceRules <$> parseRuleLines table lines'

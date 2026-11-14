@@ -13,7 +13,7 @@ import TestSupport (at, parsed)
 blockTests :: TestTree
 blockTests =
   testGroup
-    "BNF and equations"
+    "BNF, equations, and display expressions"
     [ testCase "BNF keywords need no declarations; category lists and rows survive parsing" $ do
         body <- parsedBody BnfKind [] "--- Types\nA,B ::= x | y\n        | z\nC ::= q\n\n--- Contexts\nΓ ::= ∅"
         case body of
@@ -100,6 +100,14 @@ blockTests =
       testCase "empty bodies emit no layout" $ do
         compileSource "\\begin{inference}[kind=bnf]\n\n\\end{inference}" @?= Right ""
         compileSource "\\begin{inference}[kind=equation]\n\n\\end{inference}" @?= Right "",
+      testCase "display expressions use document notation and preserve captions" $ do
+        let input = "\\begin{inference}[kind=expr,rule_set=Identity]\n\n  ι → ι\n\\end{inference}\n\\begin{inference-notation}\ninfixr:60 \"→\"\n\\end{inference-notation}"
+        output <- parsed input (compileSource input)
+        assertBool "renders a bare expression inside a captioned display" $
+          Text.isPrefixOf "\\begin{figure}\n\\[\n\\iota\\to\\iota\n\\]\n\\caption{Identity}\n" output,
+      testCase "display expressions skip empty bodies and reject a second expression line" $ do
+        compileSource "\\begin{inference}[kind=expr]\n \n\\end{inference}" @?= Right ""
+        rejectBody ExprKind "ι\n\n  x" UnexpectedToken (at 3 3 4),
       testCase "source options preserve braced commas and report option spans" $ do
         let input = "\\begin{inference}[kind=bnf,rule_set={Types, {terms}}]\n--- Names\nA ::= x\n\\end{inference}"
         case parseSource input of

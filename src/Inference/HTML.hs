@@ -1,5 +1,6 @@
 module Inference.HTML (renderHtml, renderHtmlExpression) where
 
+import Data.Char (isAlphaNum, isAscii)
 import Data.Foldable (fold)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Map.Strict qualified as Map
@@ -17,26 +18,29 @@ renderHtml templates document =
       body <- case sectionBody section of
         InferenceRules [] -> pure ""
         InferenceRules rules ->
-          styled "div" "display:flex;flex-wrap:wrap;align-items:center;gap:1em" . fold
+          styled "div" "display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:1em" . fold
             <$> traverse (renderRule renderExpr) rules
         BnfGroups groups -> fold <$> traverse (renderBnfGroup renderExpr) groups
+        DisplayExpression expression ->
+          foldMap (styled "div" "text-align:center;margin:1em 0") <$> traverse renderExpr expression
         Equations rows
           | any isEquation rows -> table . fold <$> traverse (renderEquationRow renderExpr) rows
           | otherwise -> pure ""
       pure $ case sectionTitle section of
         Just title
           | not (Text.null body) ->
-              styled "figure" "margin:1em 0" (body <> styled "figcaption" "margin-top:.5em" (escapeHtml title))
+              styled "figure" "margin:1em 0" (body <> styled "figcaption" "margin-top:.5em;text-align:center" (escapeHtml title))
         _ -> body
 
     renderExpr = renderHtmlExpression templates (documentNotations document)
 
 renderHtmlExpression :: Templates -> [Notation] -> Expr -> Either Diagnostic Text
-renderHtmlExpression templates declarations = renderExpr
+renderHtmlExpression templates declarations expression =
+  styled "span" "font-style:normal" <$> renderExpr expression
   where
     notations = Map.fromList [(notationId notation, notation) | notation <- declarations]
-    renderExpr expression = case exprNode expression of
-      Atom name -> Right (escapeHtml name)
+    renderExpr expr = case exprNode expr of
+      Atom name -> Right (renderExpressionText name)
       Group inner -> do
         rendered <- renderExpr inner
         pure ("(" <> rendered <> ")")
@@ -58,7 +62,7 @@ renderHtmlExpression templates declarations = renderExpr
                 reference name = case Map.lookup name bindings of
                   Just value -> Right value
                   Nothing -> invalid lead ("Unknown template hole ‘" <> name <> "’.")
-                patternPart (Literal literal) = Right (escapeHtml literal)
+                patternPart (Literal literal) = Right (renderExpressionText literal)
                 patternPart (Hole name _) = reference name
                 templatePart (Fragment fragment) = Right fragment
                 templatePart (Reference name) = reference name
@@ -129,7 +133,7 @@ table = tableWithCaption ""
 
 tableWithCaption :: Text -> Text -> Text
 tableWithCaption caption rows =
-  styled "table" "border-collapse:collapse;margin:.5em 0" (caption <> element "tbody" rows)
+  styled "table" "border-collapse:collapse;margin:.5em auto" (caption <> element "tbody" rows)
 
 row :: [Text] -> Text
 row = element "tr" . Text.concat
@@ -143,6 +147,14 @@ element tag body = "<" <> tag <> ">" <> body <> "</" <> tag <> ">"
 
 styled :: Text -> Text -> Text -> Text
 styled tag css body = "<" <> tag <> " style=\"" <> css <> "\">" <> body <> "</" <> tag <> ">"
+
+renderExpressionText :: Text -> Text
+renderExpressionText = foldMap renderRun . Text.groupBy (\left right -> isItalicCharacter left == isItalicCharacter right)
+  where
+    isItalicCharacter char = isAscii char && isAlphaNum char
+    renderRun run = case Text.uncons run of
+      Just (first, _) | isItalicCharacter first -> styled "span" "font-style:italic" (escapeHtml run)
+      _ -> escapeHtml run
 
 escapeHtml :: Text -> Text
 escapeHtml = Text.concatMap $ \case

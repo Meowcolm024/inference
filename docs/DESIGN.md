@@ -84,7 +84,7 @@ The [untyped lambda calculus example](../example/untyped-lambda.tex) presents sy
 | Rule separator | Unicode horizontal line `────`               |
 | Rule names     | Written after the separator                  |
 | Rule sets      | `inference` environments with optional `rule_set` captions |
-| Block kinds    | Inference rules by default, or `kind=bnf` / `kind=equation` |
+| Block kinds    | Inference rules by default, or `kind=bnf` / `kind=equation` / `kind=expr` |
 | Expressions    | Extensible notation parser                   |
 | Notation       | Lean 4-inspired precedence and associativity |
 | Output         | LaTeX today, with an HTML backend proposed |
@@ -156,6 +156,18 @@ Each nonblank source line supplies one equation row. The first outer `=` is an e
 Render rows in source order with aligned equality signs and a separate guard column. The first example row displays `x [e/y] = e` followed by `if x = y`. The `--` marker supplies layout metadata and is omitted from the LaTeX output. The second row has an empty guard column. Preserve explicit row breaks and blank-row separation. Rows are independent displayed equations with optional conditions.
 
 The BNF and equation examples use the corresponding arrow, quantifier, substitution, and equality notations declared in `inference-notation`. Report an empty side or an empty guard at the relevant source span.
+
+### Display expression blocks
+
+Use `kind=expr` to display one Unicode expression with the shared notation table and backend templates.
+
+```text
+\begin{inference}[kind=expr]
+∅ ⊢ λ x : ι . x : ι → ι
+\end{inference}
+```
+
+In Pandoc Markdown, put the expression inside a fence with `{.inference kind=expr}`. The body has at most one nonblank line. A second nonblank line is an error, and an empty body produces no output. The expression grammar handles every token, including any declared equality notation. LaTeX emits display math and HTML emits a centered block with the rendered Unicode expression. The usual optional `rule_set` caption applies.
 
 ## 3. Notation system
 
@@ -235,7 +247,7 @@ pandoc notes.org --from=org --to=latex --filter=inference --output=notes.tex
 
 For standalone LaTeX, add `--standalone --include-in-header=mathpartir.tex`, with `\usepackage{mathpartir}` in that header file.
 
-Each Pandoc code block with class `inference` supplies one block. The optional `rule_set` attribute supplies its figure caption, and `kind` selects the same body grammar as in source mode. For example, Markdown uses `{.inference kind=bnf rule_set="Syntax"}` and Org uses `#+BEGIN_SRC inference :kind bnf :rule_set "Syntax"`. Use `kind=equation` or `:kind equation` for equations. The fence boundaries delimit the body. [Pandoc Markdown reader](https://github.com/jgm/pandoc/blob/3.7.0.2/src/Text/Pandoc/Readers/Markdown.hs#L637-L668)
+Each Pandoc code block with class `inference` supplies one block. The optional `rule_set` attribute supplies its figure caption, and `kind` selects the same body grammar as in source mode. For example, Markdown uses `{.inference kind=bnf rule_set="Syntax"}` and Org uses `#+BEGIN_SRC inference :kind bnf :rule_set "Syntax"`. Use `kind=equation` or `:kind equation` for equations, and `kind=expr` or `:kind expr` for display expressions. The fence boundaries delimit the body. [Pandoc Markdown reader](https://github.com/jgm/pandoc/blob/3.7.0.2/src/Text/Pandoc/Readers/Markdown.hs#L637-L668)
 
 ````
 ```{.inference rule_set="Typing rules"}

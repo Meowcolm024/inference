@@ -57,13 +57,13 @@ x ∉ dom Γ
 
 For example, assume `x : ι`{.inference}. By `T-Var`, the body `x`{.inference} has type `ι`{.inference}. Then `T-Abs` discharges the assumption, giving the identity function its type in the empty context.
 
-$$
-\emptyset \vdash \lambda x : \iota.\,x : \iota \to \iota
-$$
+```{.inference kind=expr}
+∅ ⊢ λ x : ι . x : ι → ι
+```
 
 ## Source notation
 
-The grammar, rules, and inline expressions share the declarations and templates in [stlc.notation](stlc.notation). The import is relative to the repository root when running the command below. The typing judgment is one mixfix pattern with holes for the context, term, and type. Application uses juxtaposition, as in `e₁ e₂`{.inference}.
+The grammar, rules, and expressions share the declarations and templates in [stlc.notation](stlc.notation). The import is relative to the repository root when running the command below. The typing judgment is one mixfix pattern with holes for the context, term, and type. Application uses juxtaposition, as in `e₁ e₂`{.inference}.
 
 ```{.inference-notation}
 import "example/stlc.notation"

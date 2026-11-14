@@ -24,7 +24,7 @@ moduleTests =
                   CodeBlock ("", ["inference-notation"], []) "import \"nested/transitive.notation\""
                 ]
         rendered <- compileDocumentWithImports root (Format "html5") document
-        rendered @?= Right (Pandoc nullMeta [Para [RawInline (Format "html") "A <b>→</b> B"], RawBlock (Format "html") ""]),
+        rendered @?= Right (Pandoc nullMeta [Para [RawInline (Format "html") "<span style=\"font-style:normal\"><span style=\"font-style:italic\">A</span> <b>→</b> <span style=\"font-style:italic\">B</span></span>"], RawBlock (Format "html") ""]),
       testCase "cycles point at the closing import with the full chain" $ do
         result <- compileSourceWithImports root (source "import \"cycle.notation\"")
         case result of

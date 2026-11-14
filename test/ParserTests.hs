@@ -236,6 +236,7 @@ countBody :: BlockBody -> Int
 countBody (InferenceRules rules) = length rules
 countBody (BnfGroups groups) = sum (map (length . bnfProductions) groups)
 countBody (Equations rows) = length [() | EquationLine _ <- rows]
+countBody (DisplayExpression expression) = length expression
 
 data Shape
   = Name Text

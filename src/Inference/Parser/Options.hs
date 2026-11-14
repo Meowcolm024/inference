@@ -46,7 +46,8 @@ parseOptions pairs = snd <$> foldM apply (Set.empty, BlockOptions InferenceKind 
               kind <- case locatedValue value of
                 "bnf" -> Right BnfKind
                 "equation" -> Right EquationKind
-                _ -> Left (Diagnostic UnknownBlockKind (location value) ("Unknown block kind ‘" <> locatedValue value <> "’. Use ‘bnf’ or ‘equation’, or omit ‘kind’ for inference rules.") [])
+                "expr" -> Right ExprKind
+                _ -> Left (Diagnostic UnknownBlockKind (location value) ("Unknown block kind ‘" <> locatedValue value <> "’. Use ‘bnf’, ‘equation’, or ‘expr’, or omit ‘kind’ for inference rules.") [])
               pure options {optionsKind = kind}
             "rule_set"
               | Text.null (locatedValue value) -> invalid (location value) "A rule_set title must be nonempty."

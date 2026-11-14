@@ -6,6 +6,7 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Inference.AST
@@ -83,6 +84,7 @@ notationIndex templates notations =
 emptyBody :: BlockBody -> Bool
 emptyBody (InferenceRules rules) = null rules
 emptyBody (BnfGroups groups) = null groups
+emptyBody (DisplayExpression expression) = isNothing expression
 emptyBody (Equations rows) = all blank rows
   where
     blank (EquationBlank _) = True
@@ -97,6 +99,8 @@ renderSection notations section = do
     BnfGroups groups -> do
       rendered <- traverse (renderBnfGroup notations) groups
       pure (displayArray "l" (Text.intercalate " \\\\\n{} \\\\\n" rendered))
+    DisplayExpression expression ->
+      foldMap (\body -> "\\[\n" <> body <> "\n\\]\n") <$> traverse (renderExpr notations) expression
     Equations rows -> do
       rendered <- traverse (renderEquationRow notations) rows
       pure (displayArray "rcll" (Text.intercalate " \\\\\n" rendered))

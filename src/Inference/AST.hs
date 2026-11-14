@@ -68,7 +68,7 @@ data Section = Section
   }
   deriving (Eq, Show)
 
-data BlockKind = InferenceKind | BnfKind | EquationKind
+data BlockKind = InferenceKind | BnfKind | EquationKind | ExprKind
   deriving (Eq, Show)
 
 data BlockOptions = BlockOptions
@@ -81,6 +81,7 @@ data BlockBody
   = InferenceRules [Rule]
   | BnfGroups [BnfGroup]
   | Equations [EquationRow]
+  | DisplayExpression (Maybe Expr)
   deriving (Eq, Show)
 
 sectionRules :: Section -> [Rule]
