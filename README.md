@@ -125,6 +125,14 @@ stack exec inference -- --source --module-root . < example/stlc.tex
 
 On invalid input, `formatDiagnostic` explains the error and highlights its location. For an ambiguous expression, it also highlights the competing declarations.
 
+## VS Code live preview
+
+The extension in [vscode-extension/](vscode-extension/README.md) previews Markdown inference blocks and inline expressions using the bundled Wasm compiler. It updates as you type, reads unsaved notation imports, and reports compiler errors in VS Code's Problems panel. Build an installable VSIX with the extension's documented build commands, then run **Unicode Inference: Open Live Preview** on `example/stlc.md`.
+
+## Browser live preview
+
+The TypeScript/React npm project in [frontend/](frontend/README.md) provides a Markdown editor on the left and a live preview on the right. It uses KaTeX for ordinary math and the Wasm compiler for inference notation. Run `cd frontend && npm ci && npm run dev`; the first launch prepares the compiler artifacts. The app runs entirely in the browser and builds to static files.
+
 ## Tests
 
 Run `stack test` for parser, source rewriting, block layout, Pandoc filter, and LaTeX golden tests. `test/Spec.hs` is the entry point and assembles the separate test modules.

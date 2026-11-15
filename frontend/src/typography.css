@@ -1,0 +1,186 @@
+/* Unicode Greek in inference HTML needs the same glyphs as KaTeX math. */
+@font-face {
+  font-family: "Inference Greek";
+  src: url("katex/dist/fonts/KaTeX_Math-Italic.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+03B1-03C9, U+03D1, U+03D5-03D6, U+03F1, U+03F5;
+}
+
+.rendered-document {
+  width: 100%;
+  padding: 28px 40px 44px;
+  margin: 0;
+  color: #161616;
+  font-family: "KaTeX_Main", "Latin Modern Roman", "Times New Roman", serif;
+  font-size: clamp(13px, 2.1cqi, 16px);
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  counter-reset: section;
+}
+.rendered-document > :first-child {
+  margin-top: 0;
+}
+.rendered-document h1,
+.rendered-document h2,
+.rendered-document h3,
+.rendered-document h4 {
+  color: inherit;
+  line-height: 1.3;
+  letter-spacing: normal;
+}
+.rendered-document h1 {
+  margin: 1.5em 0 0.8em;
+  font-size: 1.8em;
+  font-weight: 400;
+  text-align: center;
+  text-wrap: balance;
+}
+.rendered-document h1 + p {
+  margin: 0 0 2.8em;
+  font-size: 1em;
+  text-align: center;
+  text-indent: 0;
+}
+.rendered-document h2 {
+  margin: 1.7em 0 0.65em;
+  font-size: 1.2em;
+  font-weight: 700;
+  counter-increment: section;
+  counter-reset: subsection;
+}
+.rendered-document h2::before {
+  content: counter(section) "\2003";
+}
+.rendered-document h3 {
+  margin: 1.4em 0 0.55em;
+  font-size: 1.05em;
+  font-weight: 700;
+  counter-increment: subsection;
+}
+.rendered-document h3::before {
+  content: counter(section) "." counter(subsection) "\2003";
+}
+.rendered-document h4 {
+  margin: 1.2em 0 0.4em;
+  font-size: 1em;
+  font-style: italic;
+  font-weight: 400;
+}
+.rendered-document p {
+  margin: 0;
+  text-align: justify;
+  hyphens: auto;
+}
+.rendered-document p + p {
+  text-indent: 1.5em;
+}
+.rendered-document a {
+  color: inherit;
+  text-decoration-thickness: 0.5px;
+  text-underline-offset: 2px;
+}
+.rendered-document code {
+  font-family: "KaTeX_Typewriter", "Courier New", monospace;
+  font-size: 0.9em;
+}
+.rendered-document pre {
+  margin: 1.2em 0;
+  padding: 0.5em 1em;
+  overflow-x: auto;
+  line-height: 1.4;
+  text-align: left;
+}
+.rendered-document pre code {
+  white-space: pre;
+}
+.rendered-document blockquote {
+  margin: 1.5em 1.8em;
+  font-size: 0.95em;
+  font-style: italic;
+}
+.rendered-document ul,
+.rendered-document ol {
+  margin: 0.8em 0;
+  padding-left: 1.8em;
+}
+.rendered-document li {
+  margin: 0.25em 0;
+}
+.rendered-document table {
+  border-collapse: collapse;
+  max-width: 100%;
+}
+.rendered-document > table {
+  margin: 1.5em auto;
+  border-top: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  font-size: 0.95em;
+}
+.rendered-document > table th,
+.rendered-document > table td {
+  padding: 0.35em 0.8em;
+  text-align: left;
+}
+.rendered-document > table th {
+  border-bottom: 0.75px solid currentColor;
+}
+.rendered-document img {
+  max-width: 100%;
+}
+.rendered-document hr {
+  width: 30%;
+  margin: 1.8em auto;
+  border: 0;
+  border-top: 0.5px solid currentColor;
+}
+.rendered-document .inference-block {
+  margin: 1.4em 0;
+  padding: 0.2em 0;
+  overflow-x: auto;
+}
+.rendered-document .inference-block,
+.rendered-document .inference-inline {
+  font-family:
+    "Inference Greek", "KaTeX_Main", "Cambria Math", "DejaVu Serif", serif;
+  font-size: 1em;
+  color: inherit;
+}
+.rendered-document .inference-block figure {
+  margin: 0 !important;
+}
+.rendered-document .inference-block figcaption {
+  padding-top: 0.4em;
+  font-size: 0.9em;
+  font-style: italic;
+}
+.rendered-document .inference-block caption {
+  padding-bottom: 0.3em;
+  font-size: 0.95em;
+}
+.rendered-document .katex {
+  font-size: 1.05em;
+  color: inherit;
+}
+.rendered-document .katex-display {
+  margin: 1.3em 0;
+  padding: 0.2em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.rendered-document .katex-error {
+  color: #a12424;
+}
+@container (max-width: 480px) {
+  .rendered-document {
+    padding: 24px 24px 36px;
+    font-size: 13px;
+  }
+  .rendered-document h1 {
+    font-size: 1.65em;
+  }
+  .rendered-document p {
+    text-align: left;
+  }
+}

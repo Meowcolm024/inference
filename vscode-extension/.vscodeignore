@@ -1,0 +1,12 @@
+**
+!package.json
+!README.md
+!LICENSE
+!dist/extension.cjs
+!dist/worker.cjs
+!dist/webview.js
+!dist/wasm/inference.wasm
+!dist/wasm/bindings.mjs
+!media/**
+!syntaxes/**
+!snippets/**

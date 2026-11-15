@@ -1,6 +1,6 @@
 # Wasm compiler and web editor
 
-The GHC Wasm wrapper in `wasm/` reuses the Haskell compiler and HTML renderer. The browser editor and worker integration are proposed.
+The GHC Wasm wrapper in `wasm/` reuses the Haskell compiler and HTML renderer. The [VS Code extension](../vscode-extension/README.md) bundles this reactor for live Markdown previews in a Node worker, with imported modules, source-mapped diagnostics, and unsaved-buffer updates. The [browser frontend](../frontend/README.md) is a private TypeScript/React npm project with a Markdown editor on the left, a live preview on the right, KaTeX math, and the same reactor in a browser worker.
 
 ## Build and smoke test
 
@@ -81,6 +81,8 @@ Use the same token tree for extraction and preview. Let the tokenizer handle fen
 Compare extraction fixtures with native `pandoc -f markdown -t json`. Check attribute decoding, both fence characters, longer fences containing examples, list and quote nesting, inline backtick runs, and `{=html}` fences. Document any reader differences as the supported Markdown subset. [Pandoc fenced code attributes](https://pandoc.org/MANUAL.html#extension-fenced_code_attributes) · [Inline code attributes](https://pandoc.org/MANUAL.html#extension-inline_code_attributes) · [Raw attributes](https://pandoc.org/MANUAL.html#extension-raw_attribute)
 
 ## Web frontend
+
+The initial editor is implemented in `frontend/`. It shares the extension's Markdown adapter, loads explicitly selected notation files by filename, preserves the last valid preview, and saves the draft locally. The items below describe the broader editor design; a project file tree, editable imported modules, and Unicode abbreviation input remain future work.
 
 - **Markdown editor.** Use a source editor with undo, syntax highlighting, and clickable diagnostics. Show Markdown and preview side by side on wide screens and as switchable panes on narrow screens. A project file list lets users open imported notation files.
 - **Live preview.** Debounce changes to the document or its module files and compile the full set of inference items so a later declaration can update earlier rules. Discard responses from superseded revisions. Render Markdown prose and ordinary math through the Markdown pipeline and insert inference fragments at the matching token nodes. Show diagnostics alongside the last successful inference preview while an edit is invalid.

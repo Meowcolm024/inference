@@ -1,0 +1,142 @@
+{
+  "name": "unicode-inference",
+  "displayName": "Unicode Inference",
+  "description": "Live Markdown previews for Unicode inference rules, grammars, and equations, powered by WebAssembly.",
+  "version": "0.1.0",
+  "type": "module",
+  "publisher": "RIvance",
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RIvance/unicode-inference.git",
+    "directory": "vscode-extension"
+  },
+  "engines": {
+    "vscode": "^1.103.0",
+    "node": ">=24.21.0"
+  },
+  "categories": [
+    "Other",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "inference",
+    "unicode",
+    "markdown",
+    "wasm",
+    "preview"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./dist/extension.cjs",
+  "contributes": {
+    "commands": [
+      {
+        "command": "inference.openPreview",
+        "title": "Open Live Preview",
+        "category": "Unicode Inference",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "inference.insertRuleBar",
+        "title": "Insert Rule Bar",
+        "category": "Unicode Inference"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "inference.openPreview",
+          "when": "editorLangId == markdown",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "inference.openPreview",
+          "when": "editorLangId == markdown"
+        },
+        {
+          "command": "inference.insertRuleBar",
+          "when": "editorLangId == markdown"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Unicode Inference",
+      "properties": {
+        "inference.previewDelay": {
+          "type": "number",
+          "default": 150,
+          "minimum": 0,
+          "maximum": 2000,
+          "description": "Milliseconds to wait after editing before updating the preview."
+        },
+        "inference.moduleRoot": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Directory for notation imports, relative to the Markdown file's workspace folder. Defaults to that folder, or the Markdown file's directory when no workspace is open."
+        }
+      }
+    },
+    "languages": [
+      {
+        "id": "inference-notation",
+        "aliases": [
+          "Inference Notation"
+        ],
+        "extensions": [
+          ".notation"
+        ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "inference-notation",
+        "scopeName": "source.inference-notation",
+        "path": "./syntaxes/notation.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "markdown",
+        "path": "./snippets/markdown.json"
+      }
+    ]
+  },
+  "scripts": {
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "build": "node scripts/build.mjs",
+    "check": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "test:wasm": "tsx --test test/wasm.integration.ts",
+    "test:extension": "node scripts/test-extension.mjs",
+    "test:webview": "tsx test/webview.integration.ts",
+    "format": "prettier --write src test scripts media syntaxes snippets package.json tsconfig.json .vscode README.md",
+    "format:check": "prettier --check src test scripts media syntaxes snippets package.json tsconfig.json .vscode README.md",
+    "vscode:prepublish": "npm run check && npm run build",
+    "package": "vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "@bjorn3/browser_wasi_shim": "0.4.2",
+    "markdown-it": "15.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "1.101.0",
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "4.1.1",
+    "esbuild": "^0.25.0",
+    "playwright-core": "1.65.1",
+    "prettier": "3.10.1",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  },
+  "overrides": {
+    "@vscode/vsce": {
+      "minimatch": "11.0.8"
+    }
+  }
+}
