@@ -285,6 +285,8 @@ The second pass also replaces each `inference` block with a `RawBlock` tagged `l
 
 For `html`, `html4`, and `html5`, the filter uses the same two passes and inserts HTML fragments with inline styles. Inference rules use Unicode expressions and CSS for the rule bar and premise layout. BNF and equations use tables. The filter hides declaration blocks and preserves IDs on rendered inference blocks. An explicit `html` template supplies raw markup for its notation.
 
+The Pandoc filter CLI exposes `--ignore-html-templates` for the `html`, `html4`, and `html5` targets. With the flag present, render blocks and inline expressions from their notation patterns, including imported notation. The flag affects only HTML rendering. Template validation still runs, and existing CLI invocations continue to apply HTML overrides by default.
+
 Pass the document AST through unchanged for other targets or when the target argument is absent. On invalid JSON, an incompatible AST version, or a rule compilation error, report the failure on stderr and exit with a nonzero status. For rule diagnostics, include the block identifier or ordinal and the block-relative source span.
 
 ### Inline expressions

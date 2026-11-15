@@ -7,9 +7,10 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Encoding
 import Inference.FileSystem (fileSystemResolver)
+import Inference.HTML (HtmlTemplateMode (..))
 import Inference.LaTeX (compileSourceWithImports)
 import Inference.Pandoc (runFilter)
-import Options.Applicative (Parser, execParser, flag', footer, fullDesc, help, helper, info, long, metavar, progDesc, strArgument, strOption, value)
+import Options.Applicative (Parser, execParser, flag, flag', footer, fullDesc, help, helper, info, long, metavar, progDesc, strArgument, strOption, value)
 import System.Exit (exitFailure)
 import System.IO (hSetBinaryMode, stderr, stdin, stdout)
 
@@ -24,15 +25,19 @@ main = do
             <> footer "Try pandoc --from=markdown --to=latex --filter=inference notes.md"
         )
   case mode of
-    Filter target -> runFilter root target
+    Filter templates target -> runFilter templates root target
     Source -> runSource root
 
-data Mode = Filter (Maybe String) | Source
+data Mode = Filter HtmlTemplateMode (Maybe String) | Source
 
 modeParser :: Parser Mode
 modeParser =
   flag' Source (long "source" <> help "Rewrite inference environments in UTF-8 LaTeX from stdin.")
-    <|> (Filter <$> optional (strArgument (metavar "FORMAT" <> help "Pandoc output format")))
+    <|> (Filter <$> htmlTemplateModeParser <*> optional (strArgument (metavar "FORMAT" <> help "Pandoc output format")))
+
+htmlTemplateModeParser :: Parser HtmlTemplateMode
+htmlTemplateModeParser =
+  flag UseHtmlTemplates IgnoreHtmlTemplates (long "ignore-html-templates" <> help "Render HTML from notation patterns without applying HTML template overrides.")
 
 moduleRootParser :: Parser FilePath
 moduleRootParser =

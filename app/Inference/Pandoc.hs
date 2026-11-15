@@ -1,4 +1,4 @@
-module Inference.Pandoc (runFilter, compileDocument, compileDocumentFor, compileDocumentWithImports) where
+module Inference.Pandoc (runFilter, compileDocument, compileDocumentFor, compileDocumentWithImports, compileDocumentWithImportOptions) where
 
 import Control.Exception (ErrorCall (..), Handler (..), IOException, catches)
 import Control.Monad.Trans.State.Strict (State, StateT (..), evalState, evalStateT, state)
@@ -9,7 +9,7 @@ import Data.Text.IO qualified as Text
 import Inference.AST (Expr, Notation)
 import Inference.Blocks (BlockCompilationError (..), BlockDiagnostic (..), InferenceBlock (..), InferenceBlockKind (..), compileBlocksInScope, compileBlocksWithContext)
 import Inference.FileSystem (fileSystemResolver)
-import Inference.HTML (renderHtml, renderHtmlExpression)
+import Inference.HTML (HtmlTemplateMode (..), renderHtml, renderHtmlExpression, selectHtmlTemplates)
 import Inference.LaTeX (renderLatex, renderLatexExpression)
 import Inference.Modules (NotationSourceInput (..), formatModuleDiagnostic, loadNotationScope)
 import Inference.Parser (Diagnostic (..), formatDiagnostic, parseInlineExpression)
@@ -19,20 +19,20 @@ import System.IO (hSetBinaryMode, hSetEncoding, stderr, stdin, stdout, utf8)
 import Text.Pandoc.JSON (Block (..), Format (..), Inline (..), MathType (..), Pandoc (..), toJSONFilter)
 import Text.Pandoc.Walk (query, walkM)
 
-runFilter :: FilePath -> Maybe String -> IO ()
-runFilter root target = do
+runFilter :: HtmlTemplateMode -> FilePath -> Maybe String -> IO ()
+runFilter templateMode root target = do
   hSetBinaryMode stdin True
   hSetBinaryMode stdout True
   hSetEncoding stderr utf8
-  toJSONFilter (filterDocument root (Format . Text.pack <$> target))
+  toJSONFilter (filterDocument templateMode root (Format . Text.pack <$> target))
     `catches` [ Handler $ \(ErrorCall message) -> die ("inference: " <> message),
                 Handler $ \(failure :: IOException) -> die ("inference: " <> show failure)
               ]
 
-filterDocument :: FilePath -> Maybe Format -> Pandoc -> IO Pandoc
-filterDocument _ Nothing document = pure document
-filterDocument root (Just target) document = do
-  result <- compileDocumentWithImports root target document
+filterDocument :: HtmlTemplateMode -> FilePath -> Maybe Format -> Pandoc -> IO Pandoc
+filterDocument _ _ Nothing document = pure document
+filterDocument templateMode root (Just target) document = do
+  result <- compileDocumentWithImportOptions templateMode root target document
   case result of
     Right rendered -> pure rendered
     Left message -> Text.hPutStr stderr message >> exitFailure
@@ -41,10 +41,13 @@ compileDocument :: Pandoc -> Either Text Pandoc
 compileDocument = compileDocumentFor (Format "latex")
 
 compileDocumentFor :: Format -> Pandoc -> Either Text Pandoc
-compileDocumentFor = compileWithScope Nothing
+compileDocumentFor = compileWithScope UseHtmlTemplates Nothing
 
 compileDocumentWithImports :: FilePath -> Format -> Pandoc -> IO (Either Text Pandoc)
-compileDocumentWithImports root target@(Format name) document@(Pandoc _ blocks)
+compileDocumentWithImports = compileDocumentWithImportOptions UseHtmlTemplates
+
+compileDocumentWithImportOptions :: HtmlTemplateMode -> FilePath -> Format -> Pandoc -> IO (Either Text Pandoc)
+compileDocumentWithImportOptions templateMode root target@(Format name) document@(Pandoc _ blocks)
   | name `notElem` ["latex", "html", "html4", "html5"] = pure (Right document)
   | otherwise = do
       let sources =
@@ -58,10 +61,10 @@ compileDocumentWithImports root target@(Format name) document@(Pandoc _ blocks)
               [ ImportedDiagnostic (locate diagnostic {diagnosticSpan = span', diagnosticMessage = "Competing notation declared here."})
               | span' <- diagnosticRelated diagnostic
               ]
-        compileWithScope (Just (notations, templates, related)) target document
+        compileWithScope templateMode (Just (notations, templates, related)) target document
 
-compileWithScope :: Maybe ([Notation], BackendTemplates, Diagnostic -> [BlockDiagnostic]) -> Format -> Pandoc -> Either Text Pandoc
-compileWithScope scope (Format target) document@(Pandoc metadata blocks)
+compileWithScope :: HtmlTemplateMode -> Maybe ([Notation], BackendTemplates, Diagnostic -> [BlockDiagnostic]) -> Format -> Pandoc -> Either Text Pandoc
+compileWithScope templateMode scope (Format target) document@(Pandoc metadata blocks)
   | target == "latex" =
       compile
         renderDeclaration
@@ -70,8 +73,8 @@ compileWithScope scope (Format target) document@(Pandoc metadata blocks)
   | target `elem` ["html", "html4", "html5"] =
       compile
         (const (rawHtml ""))
-        (\templates input -> rawHtml <$> renderHtml (templatesFor "html" templates) input)
-        (\templates notations expression -> RawInline (Format "html") <$> renderHtmlExpression (templatesFor "html" templates) notations expression)
+        (\templates input -> rawHtml <$> renderHtml (selectHtmlTemplates templateMode templates) input)
+        (\templates notations expression -> RawInline (Format "html") <$> renderHtmlExpression (selectHtmlTemplates templateMode templates) notations expression)
   | otherwise = Right document
   where
     compile declaration rules renderExpression = do

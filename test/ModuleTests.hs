@@ -5,9 +5,10 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Inference.FileSystem (fileSystemResolver)
+import Inference.HTML (HtmlTemplateMode (..))
 import Inference.LaTeX (compileSourceWithImports)
 import Inference.Modules (NotationResolver)
-import Inference.Pandoc (compileDocumentWithImports)
+import Inference.Pandoc (compileDocumentWithImportOptions, compileDocumentWithImports)
 import System.FilePath (normalise, takeDirectory, (</>))
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
@@ -43,6 +44,31 @@ moduleTests =
                 ]
         rendered <- compileDocumentWithImports root (Format "html5") document
         rendered @?= Right (Pandoc nullMeta [Para [RawInline (Format "html") "<span style=\"font-style:normal\"><span style=\"font-style:italic\">A</span> <b>→</b> <span style=\"font-style:italic\">B</span></span>"], RawBlock (Format "html") ""]),
+      testCase "HTML template opt-out applies to imported notation in blocks and inline expressions" $ do
+        let document =
+              Pandoc
+                nullMeta
+                [ CodeBlock ("", ["inference"], []) "────\nA → B",
+                  Para [Code ("", ["inference"], []) "A → B"],
+                  CodeBlock ("", ["inference-notation"], []) "import \"nested/transitive.notation\""
+                ]
+            compileIgnoring = compileDocumentWithImportOptions IgnoreHtmlTemplates root
+        mapM_
+          ( \target -> do
+              rendered <- compileIgnoring (Format target) document
+              case rendered of
+                Right (Pandoc _ [RawBlock (Format "html") block, Para [RawInline (Format "html") inline], RawBlock _ ""]) ->
+                  mapM_ (\fragment -> assertBool "uses the Unicode pattern" ("→" `Text.isInfixOf` fragment && not ("<b>" `Text.isInfixOf` fragment))) [block, inline]
+                other -> assertFailure (show other)
+          )
+          ["html", "html4", "html5"]
+        latex <- compileDocumentWithImports root (Format "latex") document
+        compileIgnoring (Format "latex") document >>= (@?= latex)
+        let invalid = Pandoc nullMeta [CodeBlock ("", ["inference-notation"], []) "infixr:60 \"→\"\n  html => missing"]
+        validation <- compileIgnoring (Format "html5") invalid
+        case validation of
+          Left diagnostic -> assertBool "still validates template references" ("missing" `Text.isInfixOf` diagnostic)
+          Right _ -> assertFailure "Expected an invalid template diagnostic.",
       testCase "cycles point at the closing import with the full chain" $ do
         result <- compileSourceWithImports (fileSystemResolver root) (source "import \"cycle.notation\"")
         case result of

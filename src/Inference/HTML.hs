@@ -1,4 +1,4 @@
-module Inference.HTML (renderHtml, renderHtmlExpression) where
+module Inference.HTML (HtmlTemplateMode (..), selectHtmlTemplates, renderHtml, renderHtmlExpression) where
 
 import Data.Char (isAlphaNum, isAscii)
 import Data.Foldable (fold)
@@ -8,7 +8,13 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Inference.AST
 import Inference.Parser (Diagnostic (..), DiagnosticKind (..))
-import Inference.Templates (TemplatePart (..), Templates)
+import Inference.Templates (BackendTemplates, TemplatePart (..), Templates, templatesFor)
+
+data HtmlTemplateMode = UseHtmlTemplates | IgnoreHtmlTemplates
+
+selectHtmlTemplates :: HtmlTemplateMode -> BackendTemplates -> Templates
+selectHtmlTemplates UseHtmlTemplates = templatesFor "html"
+selectHtmlTemplates IgnoreHtmlTemplates = const mempty
 
 renderHtml :: Templates -> Document -> Either Diagnostic Text
 renderHtml templates document =

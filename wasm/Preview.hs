@@ -12,10 +12,9 @@ import Data.Text.Encoding qualified as Encoding
 import Data.Text.Lazy qualified as Lazy
 import Data.Text.Lazy.Encoding qualified as LazyEncoding
 import Inference.AST (Document (..), SourcePosition (..), SourceSpan (..))
-import Inference.HTML (renderHtml, renderHtmlExpression)
+import Inference.HTML (HtmlTemplateMode (..), renderHtml, renderHtmlExpression, selectHtmlTemplates)
 import Inference.Modules (ModuleDiagnostic (..), NotationResolver, NotationSourceInput (..), loadNotationScope)
 import Inference.Parser (Diagnostic (..), parseBlockAttributes, parseBlockSection, parseInlineExpression)
-import Inference.Templates (templatesFor)
 import System.FilePath.Posix (isAbsolute, takeDirectory, (</>))
 
 data ItemKind = Notation | Block | Inline deriving (Eq)
@@ -44,44 +43,56 @@ data Module = Module FilePath Text
 instance FromJSON Module where
   parseJSON = withObject "module" $ \entry -> Module <$> entry .: "path" <*> entry .: "source"
 
-data Request = Request Int [Item] [Module]
+data Request = Request
+  { requestRevision :: Int,
+    requestItems :: [Item],
+    requestModules :: [Module],
+    ignoreHtmlTemplates :: Bool
+  }
 
 instance FromJSON Request where
   parseJSON = withObject "request" $ \request ->
-    Request <$> request .: "revision" <*> request .: "items" <*> request .: "modules"
+    Request
+      <$> request .: "revision"
+      <*> request .: "items"
+      <*> request .: "modules"
+      <*> (request .:? "ignoreHtmlTemplates" .!= False)
 
 compileJson :: Text -> Text
 compileJson input = Lazy.toStrict (LazyEncoding.decodeUtf8 (encode response))
   where
     response = case eitherDecodeStrict' (Encoding.encodeUtf8 input) of
       Left message -> failure Nothing (Text.pack message)
-      Right (Request revision items modules) ->
-        let keys = map itemKey items
+      Right request ->
+        let revision = requestRevision request
+            keys = map itemKey (requestItems request)
          in if length keys /= Set.size (Set.fromList keys)
               then failure (Just revision) "Duplicate item key."
-              else case traverse moduleEntry modules of
+              else case traverse moduleEntry (requestModules request) of
                 Left message -> failure (Just revision) message
                 Right entries
                   | Map.size (Map.fromList entries) /= length entries ->
                       failure (Just revision) "Duplicate module path."
-                  | otherwise -> compile revision items (Map.fromList entries)
+                  | otherwise -> compile request (Map.fromList entries)
     failure :: Maybe Int -> Text -> Value
     failure revision message = object ["revision" .= revision, "status" .= ("error" :: Text), "message" .= message]
     moduleEntry (Module path source) = (,source) <$> normalizePath path
 
-compile :: Int -> [Item] -> Map.Map FilePath Text -> Value
-compile revision items modules =
+compile :: Request -> Map.Map FilePath Text -> Value
+compile request modules =
   case result of
     Left diagnostic -> response "invalid" ["diagnostics" .= [diagnostic]]
     Right fragments -> response "ok" ["fragments" .= concat fragments]
   where
+    items = requestItems request
     response :: Text -> [Pair] -> Value
-    response status fields = object (["revision" .= revision, "status" .= status] <> fields)
+    response status fields = object (["revision" .= requestRevision request, "status" .= status] <> fields)
     declarations = [NotationSourceInput ("/item:" <> itemKey item) 0 (itemSource item) | item <- items, itemKind item == Notation]
     result = do
       (notations, templates, locate) <-
         first (moduleDiagnostic []) (runIdentity (loadNotationScope (resolveModule modules) declarations))
-      let html = templatesFor "html" templates
+      let templateMode = if ignoreHtmlTemplates request then IgnoreHtmlTemplates else UseHtmlTemplates
+          html = selectHtmlTemplates templateMode templates
           renderItem item = case itemKind item of
             Notation -> Right []
             kind ->
