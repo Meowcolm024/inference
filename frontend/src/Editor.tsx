@@ -1,9 +1,57 @@
 import { useEffect, useRef } from "react";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
-import { EditorView } from "@codemirror/view";
+import { EditorSelection, Prec } from "@codemirror/state";
+import { EditorView, keymap } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { AbbreviationProvider } from "@leanprover/unicode-input";
 import { tags } from "@lezer/highlight";
+
+const abbreviations = new AbbreviationProvider({
+  abbreviationCharacter: "\\",
+  customTranslations: {},
+  eagerReplacementEnabled: false,
+}).getSymbolsByAbbreviation();
+
+function expandAbbreviation(view: EditorView, delimiter: string) {
+  if (view.composing) return false;
+
+  const { state } = view;
+  let expanded = false;
+  const changes = state.changeByRange((range) => {
+    const line = state.doc.lineAt(range.from);
+    const prefix = line.text.slice(0, range.from - line.from);
+    const abbreviation = /(?:^|[^\\])(?:\\\\)*\\([^\\\s]+)$/.exec(prefix)?.[1];
+
+    if (
+      range.empty &&
+      abbreviation &&
+      Object.hasOwn(abbreviations, abbreviation)
+    ) {
+      const symbol = abbreviations[abbreviation];
+      const from = range.from - abbreviation.length - 1;
+      const cursor = symbol.indexOf("$CURSOR");
+      const insert = symbol.replace("$CURSOR", "") + delimiter;
+      expanded = true;
+      return {
+        changes: { from, to: range.to, insert },
+        range: EditorSelection.cursor(
+          from + (cursor < 0 ? insert.length : cursor),
+        ),
+      };
+    }
+
+    if (!delimiter) return { range };
+    return {
+      changes: { from: range.from, to: range.to, insert: delimiter },
+      range: EditorSelection.cursor(range.from + delimiter.length),
+    };
+  });
+
+  if (!expanded) return false;
+  view.dispatch({ ...changes, userEvent: "input.type", scrollIntoView: true });
+  return true;
+}
 
 const theme = EditorView.theme(
   {
@@ -55,6 +103,12 @@ const highlight = HighlightStyle.define([
 
 const extensions = [
   markdown(),
+  Prec.high(
+    keymap.of([
+      { key: "Space", run: (view) => expandAbbreviation(view, " ") },
+      { key: "Tab", run: (view) => expandAbbreviation(view, "") },
+    ]),
+  ),
   EditorView.lineWrapping,
   theme,
   syntaxHighlighting(highlight),
