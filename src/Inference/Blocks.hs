@@ -7,6 +7,7 @@ module Inference.Blocks
     compileBlocksWithTemplates,
     compileBlocksWithContext,
     compileBlocksInScope,
+    parseBlockNotationScope,
   )
 where
 
@@ -15,9 +16,10 @@ import Data.List (mapAccumL)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Inference.AST (Document (..), Notation, SourcePosition (..), SourceSpan (..))
+import Inference.Content
 import Inference.LaTeX.Templates (LatexTemplates)
 import Inference.Modules (ModuleDiagnostic)
-import Inference.Parser (Diagnostic (..), parseBlockAttributes, parseBlockSection, parseNotationBlockWithTemplates)
+import Inference.Parser (Diagnostic (..), InferenceInput (..), parseInferenceContent, parseNotationBlockWithTemplates)
 import Inference.Templates (BackendTemplates, templatesFor)
 
 data InferenceBlockKind = NotationBlock | RuleBlock [(Text, Text)]
@@ -68,10 +70,17 @@ compileBlocksWithContext ::
   [InferenceBlock] ->
   Either BlockCompilationError ([output], result)
 compileBlocksWithContext renderDeclaration renderDocument compileOther blocks = do
+  scope <- parseBlockNotationScope blocks
+  compileBlocksInScope renderDeclaration renderDocument compileOther scope blocks
+
+parseBlockNotationScope ::
+  [InferenceBlock] ->
+  Either BlockCompilationError ([Notation], BackendTemplates, Diagnostic -> [BlockDiagnostic])
+parseBlockNotationScope blocks = do
   (notations, templates) <- case parseNotationBlockWithTemplates source of
     Left diagnostic -> Left (BlockCompilationError (locateNotation diagnostic) [])
     Right parsed -> Right parsed
-  compileBlocksInScope renderDeclaration renderDocument compileOther (notations, templates, relatedDeclarations) blocks
+  pure (notations, templates, relatedDeclarations)
   where
     numbered = zip [1 ..] blocks
     declarations = [(ordinal, block) | (ordinal, block@InferenceBlock {blockKind = NotationBlock}) <- numbered]
@@ -103,16 +112,21 @@ compileBlocksInScope ::
   [InferenceBlock] ->
   Either BlockCompilationError ([output], result)
 compileBlocksInScope renderDeclaration renderDocument compileOther (notations, templates, relatedDeclarations) blocks = do
-  let compileBlock entry@(_, block) = case blockKind block of
-        NotationBlock -> Right (renderDeclaration (blockSource block))
-        RuleBlock attributes ->
-          case do
-            options <- parseBlockAttributes attributes
-            section <- parseBlockSection notations options (blockSource block)
-            renderDocument templates (Document notations [section]) of
-            Left diagnostic ->
-              let primary = BlockDiagnostic (Just entry) diagnostic {diagnosticRelated = []}
-               in Left (BlockCompilationError primary (relatedDeclarations diagnostic))
-            Right rendered -> Right rendered
-  rendered <- traverse compileBlock (zip [1 ..] blocks)
+  parsed <- case parseInferenceContent notations templates (map input blocks) of
+    Left (OccurrenceKey key, diagnostic) -> Left (report (fmap (key,) (IntMap.lookup key sources)) diagnostic)
+    Right content -> Right content
+  rendered <- traverse compileBlock (zip3 [1 ..] blocks (parsedItems parsed))
   pure (rendered, compileOther notations templates relatedDeclarations)
+  where
+    sources = IntMap.fromDistinctAscList (zip [1 ..] blocks)
+    input block = case blockKind block of
+      NotationBlock -> NotationInput
+      RuleBlock attributes -> SectionInput attributes (blockSource block)
+    report origin diagnostic =
+      BlockCompilationError (BlockDiagnostic origin diagnostic {diagnosticRelated = []}) (relatedDeclarations diagnostic)
+    compileBlock (ordinal, block, item) = case parsedContent item of
+      ParsedSection section ->
+        case renderDocument templates (Document notations [section]) of
+          Left diagnostic -> Left (report (Just (ordinal, block)) diagnostic)
+          Right rendered -> Right rendered
+      _ -> Right (renderDeclaration (blockSource block))

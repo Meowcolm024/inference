@@ -1,4 +1,4 @@
-module Inference.LaTeX (compileSource, compileSourceWithImports, parseSourceWithImports, renderSourceLatex, renderLatex, renderLatexExpression) where
+module Inference.LaTeX (compileSource, compileSourceWithImports, parseSourceWithImports, parseSourceWithImportTemplates, renderSourceLatex, renderLatex, renderLatexMath, renderLatexMathBody, renderLatexExpression) where
 
 import Data.Char (isLetter)
 import Data.List (intersperse)
@@ -15,7 +15,7 @@ import Inference.LaTeX.Unicode (escapeTextChar, joinLatex, renderMathText)
 import Inference.Modules (ModuleDiagnostic (..), NotationResolver, NotationSourceInput (..), formatModuleDiagnostic, loadNotationScope)
 import Inference.Parser (Diagnostic (..), DiagnosticKind (..), formatDiagnostic, parseSourceChunks, parseSourceWithLatexTemplates)
 import Inference.Parser.Environment (RawChunk (..), scanEnvironments)
-import Inference.Templates (templatesFor)
+import Inference.Templates (BackendTemplates, templatesFor)
 
 compileSource :: Text -> Either Diagnostic Text
 compileSource input = do
@@ -30,7 +30,11 @@ compileSourceWithImports resolve input = do
     either (Left . ("stdin:" <>) . formatDiagnostic input) Right (renderSourceLatex templates document)
 
 parseSourceWithImports :: (Monad m) => NotationResolver m -> Text -> m (Either Text (SourceDocument, LatexTemplates))
-parseSourceWithImports resolve input = case scanEnvironments input of
+parseSourceWithImports resolve input =
+  fmap (fmap (fmap (templatesFor "latex"))) (parseSourceWithImportTemplates resolve input)
+
+parseSourceWithImportTemplates :: (Monad m) => NotationResolver m -> Text -> m (Either Text (SourceDocument, BackendTemplates))
+parseSourceWithImportTemplates resolve input = case scanEnvironments input of
   Left diagnostic -> pure (Left (formatModuleDiagnostic (ModuleDiagnostic host diagnostic)))
   Right chunks -> do
     let bodies =
@@ -45,7 +49,7 @@ parseSourceWithImports resolve input = case scanEnvironments input of
               <> formatDiagnostic input diagnostic {diagnosticRelated = []}
               <> foldMap (formatModuleDiagnostic . withHost . locate . related diagnostic) (diagnosticRelated diagnostic)
       document <- either (Left . report) Right (parseSourceChunks notations chunks)
-      pure (document, templatesFor "latex" templates)
+      pure (document, templates)
   where
     host = NotationSourceInput "stdin" 0 input
     withHost (ModuleDiagnostic origin diagnostic)
@@ -63,13 +67,29 @@ renderSourceLatex templates document = do
       Right (if Text.null body then "\n" else Text.unlines (map ("% " <>) (Text.lines body)))
     renderChunk notations (RuleSetSource section)
       | emptyBody (sectionBody section) = Right ""
-      | otherwise = renderSection notations section
+      | otherwise = renderSection MathparRules notations section
 
 renderLatex :: LatexTemplates -> Document -> Either Diagnostic Text
-renderLatex templates document = do
+renderLatex = renderDocument MathparRules
+
+renderLatexMath :: LatexTemplates -> Document -> Either Diagnostic Text
+renderLatexMath = renderDocument FractionRules
+
+-- Pandoc's display math node supplies the delimiters and the host owns captions.
+renderLatexMathBody :: LatexTemplates -> [Notation] -> Section -> Either Diagnostic (Maybe Text)
+renderLatexMathBody templates notations section
+  | emptyBody body = Right Nothing
+  | otherwise = Just <$> renderBody FractionRules (notationIndex templates notations) body
+  where
+    body = sectionBody section
+
+data RuleLayout = MathparRules | FractionRules
+
+renderDocument :: RuleLayout -> LatexTemplates -> Document -> Either Diagnostic Text
+renderDocument layout templates document = do
   let notations = notationIndex templates (documentNotations document)
       sections = filter (not . emptyBody . sectionBody) (documentSections document)
-  fragments <- traverse (renderSection notations) sections
+  fragments <- traverse (renderSection layout notations) sections
   pure (Text.intercalate "\n" fragments)
 
 renderLatexExpression :: LatexTemplates -> [Notation] -> Expr -> Either Diagnostic Text
@@ -90,32 +110,44 @@ emptyBody (Equations rows) = all blank rows
     blank (EquationBlank _) = True
     blank (EquationLine _) = False
 
-renderSection :: NotationIndex -> Section -> Either Diagnostic Text
-renderSection notations section = do
-  content <- case sectionBody section of
-    InferenceRules rules -> do
-      rendered <- traverse (renderRule notations) rules
-      pure (Text.unlines (["\\begin{mathpar}"] ++ intersperse "" rendered ++ ["\\end{mathpar}"]))
-    BnfGroups groups -> do
-      rendered <- traverse (renderBnfGroup notations) groups
-      pure (displayArray "l" (Text.intercalate " \\\\\n{} \\\\\n" rendered))
-    DisplayExpression expression ->
-      foldMap (\body -> "\\[\n" <> body <> "\n\\]\n") <$> traverse (renderExpr notations) expression
-    Equations rows -> do
-      rendered <- traverse (renderEquationRow notations) rows
-      pure (displayArray "rcll" (Text.intercalate " \\\\\n" rendered))
-  pure $ case sectionTitle section of
-    Nothing -> content
-    Just title ->
+renderSection :: RuleLayout -> NotationIndex -> Section -> Either Diagnostic Text
+renderSection layout notations section = do
+  body <- renderBody layout notations (sectionBody section)
+  let content = case (layout, sectionBody section) of
+        (MathparRules, InferenceRules _) -> body
+        _ -> "\\[\n" <> body <> "\n\\]\n"
+  pure $ case (sectionTitle section, layout) of
+    (Nothing, _) -> content
+    (Just title, MathparRules) ->
       "\\begin{figure}\n"
         <> content
         <> "\\caption{"
         <> Text.concatMap escapePlainTextChar title
         <> "}\n\\end{figure}\n"
+    (Just title, FractionRules) ->
+      content <> "\\par\\noindent " <> Text.concatMap escapePlainTextChar title <> "\\par\n"
 
-displayArray :: Text -> Text -> Text
-displayArray columns body =
-  "\\[\n\\begin{array}{" <> columns <> "}\n" <> body <> "\n\\end{array}\n\\]\n"
+renderBody :: RuleLayout -> NotationIndex -> BlockBody -> Either Diagnostic Text
+renderBody layout notations = \case
+  InferenceRules rules -> case layout of
+    MathparRules -> do
+      rendered <- traverse (renderRule notations) rules
+      pure (Text.unlines (["\\begin{mathpar}"] ++ intersperse "" rendered ++ ["\\end{mathpar}"]))
+    FractionRules -> do
+      rendered <- traverse (renderFractionRule notations) rules
+      pure (mathArray "cl" (Text.intercalate " \\\\\n" rendered))
+  BnfGroups groups -> do
+    rendered <- traverse (renderBnfGroup notations) groups
+    pure (mathArray "l" (Text.intercalate " \\\\\n{} \\\\\n" rendered))
+  DisplayExpression expression ->
+    foldMap id <$> traverse (renderExpr notations) expression
+  Equations rows -> do
+    rendered <- traverse (renderEquationRow notations) rows
+    pure (mathArray "rcll" (Text.intercalate " \\\\\n" rendered))
+
+mathArray :: Text -> Text -> Text
+mathArray columns body =
+  "\\begin{array}{" <> columns <> "}\n" <> body <> "\n\\end{array}"
 
 renderBnfGroup :: NotationIndex -> BnfGroup -> Either Diagnostic Text
 renderBnfGroup notations group = do
@@ -162,6 +194,16 @@ renderRule notations rule = do
         [] -> " " -- mathpartir omits the rule bar for an empty argument.
         _ -> Text.intercalate " \\\\\n   " premises
   pure (command <> "\n  {" <> premiseText <> "}\n  {" <> conclusion <> "}")
+
+renderFractionRule :: NotationIndex -> Rule -> Either Diagnostic Text
+renderFractionRule notations rule = do
+  premises <- traverse (renderExpr notations) (rulePremises rule)
+  conclusion <- renderExpr notations (ruleConclusion rule)
+  let numerator = case premises of
+        [] -> "\\vphantom{X}"
+        _ -> Text.intercalate "\\qquad " premises
+      label = foldMap (\name -> " & \\mbox{" <> Text.concatMap escapePlainTextChar name <> "}") (ruleLabel rule)
+  pure ("\\displaystyle\\frac{" <> numerator <> "}{" <> conclusion <> "}" <> label)
 
 renderExpr :: NotationIndex -> Expr -> Either Diagnostic Text
 renderExpr notations expression = case exprNode expression of

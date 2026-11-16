@@ -11,7 +11,31 @@ filterTests :: TestTree
 filterTests =
   testGroup
     "Pandoc filter"
-    [ testCase "mixed kinds share forward notation and retain surrounding blocks" $ do
+    [ testCase "Org and Markdown use fraction rules in native math nodes" $ do
+        let input =
+              Pandoc
+                nullMeta
+                [ Para [Code ("", ["inference"], []) "A → B"],
+                  CodeBlock ("", ["inference"], [("rule_set", "Arrow rules")]) "A\n─ Ax\nA → B",
+                  CodeBlock ("", ["inference"], [("kind", "equation")]) "A = B",
+                  CodeBlock ("", ["inference-notation"], []) "infixr:60 \"→\" => \"\\to\""
+                ]
+            expected =
+              Pandoc
+                nullMeta
+                [ Para [Math InlineMath "A\\to B"],
+                  Div ("", [], []) [Para [Math DisplayMath "\\begin{array}{cl}\n\\displaystyle\\frac{A}{A\\to B} & \\mbox{Ax}\n\\end{array}"], Para [Str "Arrow rules"]],
+                  Para [Math DisplayMath "\\begin{array}{rcll}\nA & = & B & \n\\end{array}"],
+                  Plain []
+                ]
+        mapM_ (\target -> compileDocumentFor (Format target) input @?= Right expected) ["org", "markdown"],
+      testCase "nested block and inline errors follow source order" $ do
+        let inline = Code ("first", ["inference"], []) "x\ny"
+            block = CodeBlock ("second", ["inference"], []) "missing rule separator"
+        case compileDocument (Pandoc nullMeta [Para [Note [Para [inline], block]]]) of
+          Left diagnostic -> assertBool "reports the earlier inline occurrence" ("inference inline #first:" `Text.isPrefixOf` diagnostic)
+          Right _ -> assertFailure "Expected the earlier inline expression to fail.",
+      testCase "mixed kinds share forward notation and retain surrounding blocks" $ do
         let metadata = Meta (Map.singleton "title" (MetaString "Kept"))
             before = Para [Str "Before"]
             after = Para [Str "After"]

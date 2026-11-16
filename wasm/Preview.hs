@@ -4,6 +4,7 @@ import Data.Aeson
 import Data.Aeson.Types (Pair)
 import Data.Bifunctor (first)
 import Data.Functor.Identity (Identity (..))
+import Data.IntMap.Strict qualified as IntMap
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -11,12 +12,12 @@ import Data.Text qualified as Text
 import Data.Text.Encoding qualified as Encoding
 import Data.Text.Lazy qualified as Lazy
 import Data.Text.Lazy.Encoding qualified as LazyEncoding
-import Inference.AST (Document (..), SourcePosition (..), SourceSpan (..))
-import Inference.HTML (HtmlTemplateMode (..), renderHtml, renderHtmlExpression, selectHtmlTemplates)
-import Inference.LaTeX (renderLatex, renderLatexExpression)
+import Inference.AST (SourcePosition (..), SourceSpan (..))
+import Inference.Content
+import Inference.Export
+import Inference.HTML (HtmlTemplateMode (..))
 import Inference.Modules (ModuleDiagnostic (..), NotationResolver, NotationSourceInput (..), loadNotationScope)
-import Inference.Parser (Diagnostic (..), parseBlockAttributes, parseBlockSection, parseInlineExpression)
-import Inference.Templates (templatesFor)
+import Inference.Parser (Diagnostic (..), InferenceInput (..), parseInferenceContent)
 import System.FilePath.Posix (isAbsolute, takeDirectory, (</>))
 
 data ItemKind = Notation | Block | Inline deriving (Eq)
@@ -96,37 +97,34 @@ compile request modules =
       (notations, templates, locate) <-
         first (moduleDiagnostic []) (runIdentity (loadNotationScope (resolveModule modules) declarations))
       let templateMode = if ignoreHtmlTemplates request then IgnoreHtmlTemplates else UseHtmlTemplates
-          html = selectHtmlTemplates templateMode templates
-          latex = templatesFor "latex" templates
-          fragment item renderedHtml renderedLatex = do
-            markup <- renderedHtml
-            let latexFields =
-                  if includeLatex request
-                    then either (const []) (\source -> ["latex" .= source]) renderedLatex
-                    else []
-            pure [object (["key" .= itemKey item, "html" .= markup] <> latexFields)]
-          renderItem item = case itemKind item of
-            Notation -> Right []
-            kind ->
-              let rendered = case kind of
-                    Block -> do
-                      options <- parseBlockAttributes (itemPairs item)
-                      section <- parseBlockSection notations options (itemSource item)
-                      let document = Document notations [section]
-                      fragment item (renderHtml html document) (renderLatex latex document)
-                    _ -> do
-                      expression <- parseInlineExpression notations (itemSource item)
-                      fragment item (renderHtmlExpression html notations expression) (renderLatexExpression latex notations expression)
-                  report diagnostic =
-                    diagnosticValue
-                      (itemOrigin (itemKey item))
-                      diagnostic
-                      [ let ModuleDiagnostic source local = locate diagnostic {diagnosticSpan = span'}
-                         in object ["message" .= ("Competing notation declared here." :: Text), "location" .= location (sourceOrigin source) (diagnosticSpan local)]
-                      | span' <- diagnosticRelated diagnostic
-                      ]
-               in first report rendered
-      traverse renderItem items
+          origins = IntMap.fromDistinctAscList (zip [1 ..] items)
+          report (OccurrenceKey key, diagnostic) =
+            diagnosticValue
+              (maybe (object []) (itemOrigin . itemKey) (IntMap.lookup key origins))
+              diagnostic
+              [ let ModuleDiagnostic source local = locate diagnostic {diagnosticSpan = span'}
+                 in object ["message" .= ("Competing notation declared here." :: Text), "location" .= location (sourceOrigin source) (diagnosticSpan local)]
+              | span' <- diagnosticRelated diagnostic
+              ]
+          renderItem parsed (item, parsedItem) = case parsedContent parsedItem of
+            ParsedNotationBlock -> Right []
+            _ -> do
+              html <- first (report . (parsedKey parsedItem,)) (exportItem (Html templateMode) parsed parsedItem)
+              let latexFields =
+                    if includeLatex request
+                      then case exportItem Mathpar parsed parsedItem of
+                        Right latex -> ["latex" .= maybe "" fragmentText latex]
+                        Left _ -> []
+                      else []
+              pure [object (["key" .= itemKey item, "html" .= maybe "" fragmentText html] <> latexFields)]
+      parsed <- first report (parseInferenceContent notations templates (map inferenceInput items))
+      traverse (renderItem parsed) (zip items (parsedItems parsed))
+
+inferenceInput :: Item -> InferenceInput
+inferenceInput item = case itemKind item of
+  Notation -> NotationInput
+  Block -> SectionInput (itemPairs item) (itemSource item)
+  Inline -> InlineInput (itemSource item)
 
 resolveModule :: Map.Map FilePath Text -> NotationResolver Identity
 resolveModule modules importer requested = pure $ do

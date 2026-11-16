@@ -3,6 +3,9 @@ module BlockTests (blockTests) where
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Inference.AST
+import Inference.Content
+import Inference.Export
+import Inference.HTML (HtmlTemplateMode (..))
 import Inference.LaTeX (compileSource)
 import Inference.Parser
 import Test.Tasty (TestTree, testGroup)
@@ -14,7 +17,25 @@ blockTests :: TestTree
 blockTests =
   testGroup
     "BNF, equations, and display expressions"
-    [ testCase "BNF keywords need no declarations; category lists and rows survive parsing" $ do
+    [ testCase "one parsed sequence exports inline and display content to all targets" $ do
+        let declarations = "infixr:60 \"→\"\n  latex => lhs \" + \" rhs\n  html => lhs \" &rarr; \" rhs"
+            inputs = [InlineInput "A → B", NotationInput, SectionInput [] "", SectionInput [] "─ Ax_1\nA → B"]
+        (notations, templates) <- parsed declarations (parseNotationBlockWithTemplates declarations)
+        case parseInferenceContent notations templates inputs of
+          Left failure -> assertFailure (show failure)
+          Right content -> do
+            map parsedKey (parsedItems content) @?= map OccurrenceKey [1 .. 4]
+            let check target inlineText rulePieces = case exportInference target content of
+                  Right [inline, display] -> do
+                    (fragmentKey inline, fragmentContext inline) @?= (OccurrenceKey 1, InlineFragment)
+                    (fragmentKey display, fragmentContext display) @?= (OccurrenceKey 4, DisplayFragment)
+                    assertBool "uses the target's inline template" (inlineText `Text.isInfixOf` fragmentText inline)
+                    assertBool "renders the target's rule layout" (all (`Text.isInfixOf` fragmentText display) rulePieces)
+                  other -> assertFailure (show other)
+            check Mathpar "A + B" ["\\begin{mathpar}", "\\inferrule*"]
+            check LatexMath "A + B" ["\\frac{\\vphantom{X}}{A + B}", "\\mbox{Ax\\_1}"]
+            check (Html UseHtmlTemplates) "&rarr;" ["border-top", "Ax_1"],
+      testCase "BNF keywords need no declarations; category lists and rows survive parsing" $ do
         body <- parsedBody BnfKind [] "--- Types\nA,B ::= x | y\n        | z\nC ::= q\n\n--- Contexts\nΓ ::= ∅"
         case body of
           BnfGroups [types, contexts] -> do

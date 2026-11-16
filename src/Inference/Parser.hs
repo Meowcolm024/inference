@@ -9,6 +9,8 @@ module Inference.Parser
     parseInlineExpression,
     parseRuleSection,
     parseBlockSection,
+    InferenceInput (..),
+    parseInferenceContent,
     parseBlockAttributes,
     formatDiagnostic,
     Diagnostic (..),
@@ -26,6 +28,7 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
 import Inference.AST
+import Inference.Content
 import Inference.LaTeX.Templates (LatexTemplates)
 import Inference.Parser.Body (parseBnf, parseEquations)
 import Inference.Parser.Environment (RawChunk (..), scanEnvironments)
@@ -115,11 +118,14 @@ parseDeclarations lines' = do
 
 -- Inline code has a single expression and uses the document's declarations.
 parseInlineExpression :: [Notation] -> Text -> Either Diagnostic Expr
-parseInlineExpression notations input = do
+parseInlineExpression notations = parseInlineWithTable (buildNotationTable notations)
+
+parseInlineWithTable :: NotationTable -> Text -> Either Diagnostic Expr
+parseInlineWithTable table input = do
   let first = SourcePosition 1 1
       (line, remainder) = Text.break (\c -> c == '\n' || c == '\r') input
   if Text.null remainder
-    then parseExpression (buildNotationTable notations) (trimLocated (Located (lineSpan first 0 (Text.length line)) line))
+    then parseExpression table (trimLocated (Located (lineSpan first 0 (Text.length line)) line))
     else Left (Diagnostic UnexpectedToken (pointSpan (advance first (Text.length line))) "Expected a single-line inline expression." [])
 
 -- The caller supplies the section boundary and the document-wide notation.
@@ -127,10 +133,40 @@ parseRuleSection :: [Notation] -> Maybe Text -> Text -> Either Diagnostic Sectio
 parseRuleSection notations title = parseBlockSection notations (BlockOptions InferenceKind title)
 
 parseBlockSection :: [Notation] -> BlockOptions -> Text -> Either Diagnostic Section
-parseBlockSection notations options input = do
-  let table = buildNotationTable notations
+parseBlockSection notations = parseBlockWithTable (buildNotationTable notations)
+
+parseBlockWithTable :: NotationTable -> BlockOptions -> Text -> Either Diagnostic Section
+parseBlockWithTable table options input = do
   body <- sourceLines input >>= parseBody table (optionsKind options)
   pure (Section (optionsTitle options) Nothing body)
+
+data InferenceInput
+  = NotationInput
+  | SectionInput [(Text, Text)] Text
+  | InlineInput Text
+  deriving (Eq, Show)
+
+-- The caller resolves notation declarations before parsing occurrences.
+-- Failed parses retain their occurrence key for reporting against host source.
+parseInferenceContent ::
+  [Notation] ->
+  BackendTemplates ->
+  [InferenceInput] ->
+  Either (OccurrenceKey, Diagnostic) ParsedInference
+parseInferenceContent notations templates inputs =
+  ParsedInference notations templates <$> traverse parseItem (zip [1 ..] inputs)
+  where
+    table = buildNotationTable notations
+    parseItem (ordinal, input) =
+      let key = OccurrenceKey ordinal
+       in case parseInput input of
+            Left diagnostic -> Left (key, diagnostic)
+            Right content -> Right (ParsedItem key content)
+    parseInput NotationInput = Right ParsedNotationBlock
+    parseInput (SectionInput attributes source) = do
+      options <- parseBlockAttributes attributes
+      ParsedSection <$> parseBlockWithTable table options source
+    parseInput (InlineInput source) = ParsedInline <$> parseInlineWithTable table source
 
 parseBody :: NotationTable -> BlockKind -> [Located Text] -> Either Diagnostic BlockBody
 parseBody table = \case

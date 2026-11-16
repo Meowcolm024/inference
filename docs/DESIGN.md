@@ -6,7 +6,7 @@ Conceptually, it sits somewhere between Ott, Lean's notation parser, and a light
 
 The [implementation plan](IMPLEMENTATION-PLAN.md) records the implemented features, current test coverage, and remaining work.
 
-Sections 1–5 describe implemented behavior. Section 6 describes planned extensions.
+Sections 1–5 describe implemented behavior. Section 6 describes the shared export API and planned extensions.
 
 ## 1. Example input
 
@@ -285,6 +285,8 @@ The second pass also replaces each `inference` block with a `RawBlock` tagged `l
 
 For `html`, `html4`, and `html5`, the filter uses the same two passes and inserts HTML fragments with inline styles. Inference rules use Unicode expressions and CSS for the rule bar and premise layout. BNF and equations use tables. The filter hides declaration blocks and preserves IDs on rendered inference blocks. An explicit `html` template supplies raw markup for its notation.
 
+For `org` and `markdown`, the filter emits native Pandoc math nodes and uses fractions for inference rules. Both targets use LaTeX notation templates and let Pandoc choose the math delimiters. Section captions appear as text below their displays.
+
 The Pandoc filter CLI exposes `--ignore-html-templates` for the `html`, `html4`, and `html5` targets. With the flag present, render blocks and inline expressions from their notation patterns, including imported notation. The flag affects only HTML rendering. Template validation still runs, and existing CLI invocations continue to apply HTML overrides by default.
 
 Pass the document AST through unchanged for other targets or when the target argument is absent. On invalid JSON, an incompatible AST version, or a rule compilation error, report the failure on stderr and exit with a nonzero status. For rule diagnostics, include the block identifier or ordinal and the block-relative source span.
@@ -299,7 +301,7 @@ The type `A → B`{.inference} has domain `A`{.inference}.
 
 The filter recognizes Pandoc `Code` nodes with the `inference` class. Each contains one Unicode expression and uses the document-wide notation declarations and backend templates, including declarations later in the document. Inline code has no declaration or block grammar. Rule bars, BNF productions, equation rows, and notation declarations belong in their respective blocks. Operators such as `=` follow the shared expression grammar and carry no equation layout meaning.
 
-For LaTeX, replace the code with an inline math node containing the rendered expression. For HTML targets, insert the escaped Unicode expression and any explicit HTML template markup inline. Preserve the identifier, other classes, and key-value attributes in a surrounding span when present. Leave ordinary inline code and unsupported targets unchanged. Diagnostics identify the inline code by identifier or ordinal, highlight the expression-relative span, and include the original locations of competing notation declarations.
+For LaTeX, Org, and Markdown, replace the code with an inline math node containing the rendered expression. For HTML targets, insert the escaped Unicode expression and any explicit HTML template markup inline. Preserve the identifier, other classes, and key-value attributes in a surrounding span when present. Leave ordinary inline code and unsupported targets unchanged. Diagnostics identify the inline code by identifier or ordinal, highlight the expression-relative span, and include the original locations of competing notation declarations.
 
 ## 5. Reader, AST, and backend architecture
 
@@ -324,17 +326,118 @@ The LaTeX backend emits `mathpar` groups, array layouts for BNF and equations, a
 
 LaTeX diagnostics use document coordinates. Pandoc diagnostics use the block or inline identifier or ordinal with coordinates relative to its body. Competing declarations can point to a different block or an imported file.
 
-## 6. Future extensions
+## 6. Shared export and future extensions
 
-A future compilation API can return the ordered, parsed inference content and backend templates before rendering. Associate each item with a document-local occurrence key so host adapters can reinsert results even when user-supplied IDs repeat. This would let callers render the same parsed content to multiple backends and provide a basis for an explicit fragment export.
+### Ordered, parsed inference content
+
+`Inference.Content` defines a compilation result that reuses `Section` and `Expr` as the syntax trees. It records their interleaving, the notation scope that gives meaning to their `NotationId` values, and the keys needed to associate each result with its input. Pandoc and Wasm use `parseInferenceContent` with a resolved scope. For LaTeX input, use `sourceInference` with the result of `parseSourceWithTemplates` or `parseSourceWithImportTemplates`. Pass the result to `Inference.Export.exportInference` for ordered fragments.
+
+```haskell
+newtype OccurrenceKey = OccurrenceKey Int
+  deriving (Eq, Ord, Show)
+
+data ParsedInference = ParsedInference
+  { parsedNotations :: [Notation],
+    parsedTemplates :: BackendTemplates,
+    parsedItems :: [ParsedItem]
+  }
+
+data ParsedItem = ParsedItem
+  { parsedKey :: OccurrenceKey,
+    parsedContent :: ParsedContent
+  }
+
+data ParsedContent
+  = ParsedNotationBlock
+  | ParsedSection Section
+  | ParsedInline Expr
+```
+
+The list defines source order, including notation occurrences and empty sections. Each recognized occurrence has a unique key within the compilation. A reader can allocate keys sequentially as it extracts items. Use the list for export order and keys for replacement. User IDs may repeat, and Wasm request keys can remain external identifiers mapped to internal keys. Imported declarations contribute to the shared scope without creating occurrences in the host document. Notation IDs are local to the resolved scope, so independently compiled results require remapping before they can share a scope.
+
+Keep the host document and a source table beside the parsed result. The source table maps each key to the original text and diagnostic origin, such as an environment body in a LaTeX file, an attributed Pandoc node, or a Wasm request item. Existing AST spans remain available for pinpointing errors within that origin. Keep declaration provenance from the notation loader so related diagnostics can still point into another block or imported module. Host adapters own literal text, Pandoc attributes and metadata, and original notation text used for LaTeX comments.
+
+#### Compilation and replacement
+
+1. Extract notation blocks, section bodies, and inline expressions in one ordered sequence. The Pandoc adapter must interleave block and inline occurrences within the host tree, including nested content. The LaTeX scanner supplies the order of recognized environments. Wasm uses request order.
+2. Collect notation inputs from the full sequence and resolve imports once with `loadNotationScope`. Keep the declarations and all validated backend templates. A use before its declaration sees the same document-wide scope as a later use.
+3. Traverse the sequence with that scope to parse block options, section bodies, and inline expressions. Reuse the existing body and expression parsers and share the notation table across items. Preserve the order of premises, BNF continuation rows, equation rows and guards, and explicit expression groups already represented in the AST. Return structured diagnostics before attempting any export if compilation fails.
+4. Render the parsed items with the selected exporter. Host adapters replace occurrences by key. The LaTeX adapter copies literal chunks and uses original notation text for its existing comments. The Pandoc adapter emits the appropriate raw or math nodes and retains attributes using its existing wrappers. Wasm can render HTML and optional LaTeX from the same parsed result and return fragments under the original request keys.
+
+For explicit export, return ordered fragments with their keys and inline or display context. Inline TeX fragments contain bare math for insertion into a host math node or delimiter pair. Display fragments carry their own environment or delimiters. Omit notation occurrences and empty bodies from standalone output. Host rewriting handles those occurrences by key, including when the replacement is empty. A standalone exporter can wrap inline fragments for their destination and join them in source order without reconstructing the surrounding document.
+
+#### Exporters
+
+| Target | Inference rules | Other content |
+| --- | --- | --- |
+| Mathpar | Preserve the current `mathpartir` output, with a `mathpar` environment and `\inferrule` or `\inferrule*`. | Reuse LaTeX math rendering for BNF, equations, display expressions, and inline expressions. |
+| LaTeX math | Emit display math with fractions and an escaped label beside each fraction. Use a strut in the numerator for axioms to preserve the rule bar. Use a separate display row per rule initially. | Reuse the existing LaTeX expression printer and array layouts. |
+| HTML | Reuse the existing rule layout, including the rule bar and label. | Reuse HTML tables, inline spans, and the existing HTML template option. |
+
+Both TeX targets select the existing `latex` notation templates. The target changes the rule layout while expression rendering, Unicode conversion, and fallback to notation pattern order are shared. HTML selects `html` templates and uses the existing escaped Unicode fallback. Sections retain captions and rules retain labels. Host LaTeX rewriting can keep the current figure wrapper. Standalone LaTeX math can render the title as escaped text adjacent to the display. The package requirements for bare LaTeX math output also depend on any commands used in notation templates.
+
+For example, suppose a Pandoc document has an inline judgment, a BNF block, a notation block that declares the judgment, and a rule block. Compilation yields inline, section, notation, and section occurrences in that order. All exporters use the same parsed judgment. Standalone output emits the inline judgment, BNF, and rules in that order. The host adapter can still replace the notation block at its original location.
+
+#### Migration and verification
+
+1. Add the parsed result and a shared compiler for extracted items. Move parsing out of the rendering callbacks in `Inference.Blocks` and the Pandoc and Wasm adapters. Reuse the LaTeX scanner and expose its full backend template scope. Keep current public entry points as wrappers during migration.
+2. Route existing Mathpar and HTML rendering through the parsed result. Verify current output and diagnostic formatting with the existing golden, filter, source, module, and preview fixtures.
+3. Add the LaTeX math rule layout and explicit fragment export. Test all three targets from one compiled input, mixed inline and block order through nested Pandoc nodes, duplicate user IDs, empty sections, and a forward reference to imported notation with templates for both backend families. Check that renderer failures retain the occurrence key and the expression span.
+
+### Syntax extensions
 
 A Unicode printer can preserve expression grouping and the row boundaries of BNF and equations. LaTeX source could also gain an inline `\inference{…}` form once the scanner handles balanced braces, comments, and verbatim regions.
 
 ### Metavariable declarations and checking
 
-Add an opt-in semantic pass after parsing and before language export. Let authors declare metavariable families and their syntactic categories. In STLC, for example, `A` and `B` range over types, `e` over terms, `x` over variable names, and `Γ` over contexts. Define how declarations cover indexed forms such as `e₁` and `e₂` as part of the declaration syntax.
+Metavariable support introduces a breaking change to the declaration syntax described in section 3. A declaration binds a syntactic form to a named term such as `Term`, `Type`, or `Judgment`. Several forms can bind the same term, so each mixfix declaration retains its own notation identity and backend templates.
 
-Resolve schematic occurrences to their declarations across rule premises and conclusions, BNF productions, and equations and guards. Report duplicate declarations and undeclared metavariables in positions identified as schematic. Check category compatibility where a production or a declared notation hole gives an expected category. Report mismatches at the use site with the relevant declaration location. Specify how authors distinguish metavariables from literal atoms and set declaration scope before enforcing those checks. Existing typesetting can continue to use the parsed AST. Exporters can consume the checked representation with resolved metavariable identities and categories.
+| Declaration | Binding |
+| --- | --- |
+| `notation <notation> => <term>` | Binds a mixfix form to the named term, preserving the pattern's precedence and named holes. |
+| `application => <term>` | Binds the built-in binary application form, whose operands are the function and argument. |
+| `atom => <term>` | Binds the built-in unary atom form, whose payload is one atom token. |
+| `variable <name> … => <term>` | Associates one or more metavariable names with a named term in the enclosing inference section. |
+
+The right-hand side on the notation declaration line is now a term name. Move existing inline LaTeX templates to indented `latex => …` clauses. Indented backend clauses keep their current syntax and hole references. As an initial spelling, keep the precedence in the notation payload and express infix shorthand through mixfix holes. For example, `lhs:61 "→" rhs:60` preserves the existing right-associative operand precedences at precedence 60.
+
+```text
+notation :60 lhs:61 "→" rhs:60 => Type
+  latex => lhs " \\to " rhs
+  html => lhs " → " rhs
+application => Term
+atom => Name
+```
+
+Notation modules can supply form bindings through the existing document-wide loader. Initially, resolve term names in a flat scope, allowing several distinct forms to bind the same name. There is one built-in application form and one built-in atom form per scope. Competing bindings for either form produce a diagnostic with both declaration sites. If independently authored modules need distinct terms with the same name, consider `namespace` and qualified references. Keep resolved term identities separate from their spelling so qualification can be added at name resolution.
+
+#### Section scope
+
+Write `variable <name> … => <term>` at the beginning of a section body. The declarations apply across the section, including across rules and across equation rows, and each section has its own scope. For example, two inference blocks can each declare `A` independently.
+
+```text
+variable A B => Type
+variable e₁ e₂ => Term
+
+e₁ : A → B
+e₂ : A
+──────────── T-App
+e₁ e₂ : B
+```
+
+The example assumes a judgment notation for `e : A` is already in scope. Start with exact names, so `e₁` and `e₂` each require a declaration. A bare token matching a section declaration resolves to a metavariable. Other bare tokens follow the atom binding. Explicit indexed families and escaping a variable name for literal use can be specified when needed.
+
+#### Opt-in scope checking
+
+Enable scope checking with `set scope_check:true` in a document's notation block. The setting defaults to false and applies to every section in the document, including sections before the setting. Read it with the document-wide notation scope before checking parsed sections. The host document owns the setting, and imported modules contribute form bindings.
+
+With checking enabled, resolve each variable's named term and require unique variable names within its section. Also require unique explicit inference rule labels within each section. Compare the parsed label text, including its internal spacing. Unlabeled rules can occur any number of times, and separate sections can reuse a label. For a duplicate declaration or label, report the repeated occurrence and point back to the first.
+
+#### Shared AST and checking
+
+Store term bindings in the shared notation scope and source-spanned variable declarations on each parsed section. Keep the existing Pratt parse and expression shapes. The notation application, binary application, and atom nodes provide the form to look up during checking. Resolve variable uses with the enclosing section's declarations before applying the atom binding, and carry a grouped expression's term through its parentheses.
+
+Run the shared checking pass after parsing and before export when scope checking is enabled. Keep a span for explicit rule labels so duplicate diagnostics can highlight the labels themselves. The pass can also produce resolved term and variable identities for exporters that need them. A form binding identifies the result term. Operand constraints need their own declarations, since a hole's precedence describes parsing and a result term alone supplies no operand types. Check compatibility wherever an explicit expected term is available and report mismatches at the use site with the relevant declaration location. Mathpar, LaTeX math, and HTML render the parsed expressions with their existing templates and omit the section's variable declarations from the output.
 
 ### Language export
 

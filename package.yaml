@@ -62,6 +62,8 @@ library:
   exposed-modules:
   - Inference.AST
   - Inference.Blocks
+  - Inference.Content
+  - Inference.Export
   - Inference.HTML
   - Inference.LaTeX
   - Inference.LaTeX.Templates

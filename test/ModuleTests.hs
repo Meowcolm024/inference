@@ -4,9 +4,11 @@ import Control.Monad.Trans.State.Strict (State, modify', runState)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Inference.Content
+import Inference.Export
 import Inference.FileSystem (fileSystemResolver)
 import Inference.HTML (HtmlTemplateMode (..))
-import Inference.LaTeX (compileSourceWithImports)
+import Inference.LaTeX (compileSourceWithImports, parseSourceWithImportTemplates)
 import Inference.Modules (NotationResolver)
 import Inference.Pandoc (compileDocumentWithImportOptions, compileDocumentWithImports)
 import System.FilePath (normalise, takeDirectory, (</>))
@@ -35,6 +37,18 @@ moduleTests =
         case result of
           Right latex -> assertBool "renders the imported arrow" ("{A\\to B\\to C}" `Text.isInfixOf` latex)
           Left diagnostic -> assertFailure (Text.unpack diagnostic),
+      testCase "LaTeX source exposes ordered content with imported HTML templates" $ do
+        result <- parseSourceWithImportTemplates (fileSystemResolver root) (source "import \"arrow.notation\"")
+        case result of
+          Left diagnostic -> assertFailure (Text.unpack diagnostic)
+          Right (document, templates) -> do
+            let content = sourceInference templates document
+            map parsedKey (parsedItems content) @?= map OccurrenceKey [1, 2]
+            case exportInference (Html UseHtmlTemplates) content of
+              Right [fragment] -> do
+                fragmentKey fragment @?= OccurrenceKey 1
+                assertBool "uses the imported HTML template" ("<b>→</b>" `Text.isInfixOf` fragmentText fragment)
+              other -> assertFailure (show other),
       testCase "Pandoc inline expressions use imported backend templates" $ do
         let document =
               Pandoc
