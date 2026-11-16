@@ -1,6 +1,21 @@
 # inference
 
-`inference` is a Haskell library and CLI for typesetting Unicode inference rules, BNF productions, and equations inside LaTeX documents. The parser produces a source-spanned AST and supports user-defined mixfix notation, infix associativity, per-hole precedence, and left-associative application by juxtaposition. Identifiers can include subscripts and superscripts such as `Γᵢ` and `eⁿ⁺¹`.
+`inference` is a Haskell library and CLI for typesetting Unicode inference rules, BNF grammars, equations, and mathematical expressions. It rewrites marked environments in LaTeX documents and works as a Pandoc JSON filter for LaTeX and HTML output. The same compiler runs in WebAssembly for live Markdown previews in VS Code and the browser.
+
+The parser supports user-defined mixfix notation, infix associativity, per-hole precedence, and left-associative application by juxtaposition. Notation can be shared through imported modules. Identifiers can include subscripts and superscripts such as `Γᵢ` and `eⁿ⁺¹`.
+
+## Live Markdown previews
+
+- **Browser editor.** Edit Markdown and see inference blocks and inline expressions rendered as you type. KaTeX renders ordinary math. The app runs locally in the browser, saves drafts in browser storage, and accepts notation modules by filename. Use Node 22.12+ or Node 24+ and run the commands below from the repository root. The first launch prepares the Wasm compiler, which requires Stack and Nix if matching artifacts are unavailable. [Browser setup and build instructions](frontend/README.md)
+- **VS Code extension.** Install the packaged VSIX in desktop VS Code 1.103 or newer, then open `example/stlc.md` with the repository root as the workspace and run **Unicode Inference: Open Live Preview**. The bundled compiler uses unsaved notation files and reports source errors in the Problems panel. [Extension setup and packaging](vscode-extension/README.md)
+
+```sh
+cd frontend
+npm ci
+npm run dev
+```
+
+Both previews use the shared Wasm compiler and render inference notation from its patterns. [Wasm build and compiler API](docs/WASM.md)
 
 ## Input
 
@@ -61,7 +76,7 @@ By default, `inference` runs as a Pandoc JSON filter. Use Pandoc Markdown or Org
 ```sh
 stack build
 stack exec pandoc -- --from=markdown+inline_code_attributes --to=latex --filter=inference example/stlc.md -o notes.tex
-stack exec pandoc -- --from=markdown --to=html5 --standalone --mathml --filter=inference example/stlc.md -o notes.html
+stack exec pandoc -- --from=markdown+inline_code_attributes --to=html5 --standalone --mathml --filter=inference example/stlc.md -o notes.html
 ```
 
 For Org documents, use `--from=org` with `#+BEGIN_SRC inference` blocks. Both formats support a `rule_set` caption, a `kind` attribute, and separate `inference-notation` blocks. Select BNF with `{.inference kind=bnf}` in Markdown or `#+BEGIN_SRC inference :kind bnf` in Org. Use `equation` for equation blocks. Notation applies throughout the document, including to earlier blocks. Other output formats pass through unchanged. The [filter design](docs/DESIGN.md#4-pandoc-json-filter) shows both block syntaxes.
@@ -109,11 +124,11 @@ infixr:60 "→"
   html => lhs " <span>→</span> " rhs
 ```
 
-LaTeX and HTML each use their own override when present and otherwise render the pattern. HTML inference blocks use Unicode expressions and inline CSS. HTML template fragments are inserted as raw markup, so use them with trusted source documents. The `--mathml` option above controls ordinary Pandoc math.
+LaTeX and HTML each use their own override when present and otherwise render the pattern. HTML inference blocks use Unicode expressions and inline CSS. HTML template fragments are inserted as raw markup, so use them with trusted source documents. To render HTML from notation patterns, use `inference html5 --ignore-html-templates` when invoking the filter directly. The `--mathml` option above controls ordinary Pandoc math.
 
 ## Use the library
 
-`Inference.LaTeX.compileSource` rewrites a LaTeX `Text` input directly. Use `Inference.Parser.parseSource` to inspect its parsed chunks. Rules, BNF productions, and equations share a backend-independent expression AST that retains Unicode text, notation IDs, and arguments.
+`Inference.LaTeX.compileSource` rewrites a LaTeX `Text` input directly. Use `Inference.Parser.parseSource` to inspect its parsed chunks. Rules, BNF productions, equations, and display expressions share a backend-independent expression AST that retains Unicode text, notation IDs, and arguments.
 
 Use `parseSourceWithLatexTemplates` with `renderSourceLatex` to keep parsing and rendering separate. When parsing individual blocks, use `parseNotationBlockWithLatexTemplates` to obtain the syntax declarations and LaTeX templates, then pass the declarations to `parseBlockSection` and the templates to `renderLatex` alongside the assembled `Document`. Supply `mempty` for the templates to use pattern-based rendering throughout. Use `parseSourceWithTemplates` or `parseNotationBlockWithTemplates` to obtain overrides for all declared backends, and `Inference.Templates.templatesFor` to select one backend.
 
@@ -125,17 +140,9 @@ stack exec inference -- --source --module-root . < example/stlc.tex
 
 On invalid input, `formatDiagnostic` explains the error and highlights its location. For an ambiguous expression, it also highlights the competing declarations.
 
-## VS Code live preview
-
-The extension in [vscode-extension/](vscode-extension/README.md) previews Markdown inference blocks and inline expressions using the bundled Wasm compiler. It updates as you type, reads unsaved notation imports, and reports compiler errors in VS Code's Problems panel. Build an installable VSIX with the extension's documented build commands, then run **Unicode Inference: Open Live Preview** on `example/stlc.md`.
-
-## Browser live preview
-
-The TypeScript/React npm project in [frontend/](frontend/README.md) provides a Markdown editor on the left and a live preview on the right. It uses KaTeX for ordinary math and the Wasm compiler for inference notation. Run `cd frontend && npm ci && npm run dev`; the first launch prepares the compiler artifacts. The app runs entirely in the browser and builds to static files.
-
 ## Tests
 
-Run `stack test` for parser, source rewriting, block layout, Pandoc filter, and LaTeX golden tests. `test/Spec.hs` is the entry point and assembles the separate test modules.
+Run `stack test` for parsing, source rewriting, block layout, notation imports, Pandoc transformations, and LaTeX golden tests. The Wasm and preview projects have separate checks. [Wasm smoke test](docs/WASM.md#build-and-smoke-test) · [Browser tests](frontend/README.md#build-and-check) · [Extension tests](vscode-extension/README.md#build-and-debug)
 
 ## Examples
 
@@ -145,6 +152,9 @@ Run `stack test` for parser, source rewriting, block layout, Pandoc filter, and 
 
 ## Roadmap
 
-Planned work includes a Unicode printer and further output backends.
+- [ ] Expose a reusable compilation result for multiple renderers and fragment export.
+- [ ] Add a Unicode printer and explore inline expressions in standalone LaTeX source.
+- [ ] Add metavariable declarations and category checking before prototyping an Agda, Haskell, or Lean exporter.
+- [ ] Extend the browser editor with project files, editable notation modules, and Unicode abbreviations.
 
 See the [design](docs/DESIGN.md) for the input grammar and the [implementation plan](docs/IMPLEMENTATION-PLAN.md) for the remaining stages.
