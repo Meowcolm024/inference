@@ -44,10 +44,12 @@ test("inference and KaTeX share the Markdown tree and templates are disabled", a
   const source =
     '$x$ and `A → B`{.inference}\n\n```inference-notation\nimport "types.notation"\n```';
   const modules = [{ path: "types.notation", source: 'infixr:60 "→"' }];
+  const latex = String.raw`A \to B`;
   const result = await renderPreview(
     { revision: 3, source, modules },
     async (request) => {
       assert.equal(request.ignoreHtmlTemplates, true);
+      assert.equal(request.includeLatex, true);
       assert.deepEqual(request.modules, modules);
       assert.deepEqual(
         request.items.map((item) => item.kind),
@@ -56,7 +58,9 @@ test("inference and KaTeX share the Markdown tree and templates are disabled", a
       return {
         revision: request.revision,
         status: "ok",
-        fragments: [{ key: request.items[0].key, html: "<span>A → B</span>" }],
+        fragments: [
+          { key: request.items[0].key, html: "<span>A → B</span>", latex },
+        ],
       };
     },
   );
@@ -64,6 +68,9 @@ test("inference and KaTeX share the Markdown tree and templates are disabled", a
   if (result.status !== "ok") return;
   assert.match(result.html, /class="katex"/);
   assert.match(result.html, /<span>A → B<\/span>/);
+  assert.match(result.html, /data-copy-latex="item-0"/);
+  assert.equal(result.latexByKey.get("item-0"), latex);
+  assert.equal(result.html.includes(latex), false);
   assert.doesNotMatch(result.html, /import &quot;/);
 });
 

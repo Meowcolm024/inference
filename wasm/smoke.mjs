@@ -26,7 +26,7 @@ const request = String.raw`{
     {"key":"inline","kind":"inline","attr":{"id":"","classes":["inference"],"pairs":[]},"source":"A → B"},
     {"key":"notation","kind":"notation","attr":{"id":"","classes":["inference-notation"],"pairs":[]},"source":"import \"arrow.notation\""}
   ],
-  "modules":[{"path":"arrow.notation","source":"infixr:60 \"→\"\n  html => lhs \" <b>→</b> \" rhs"}]
+  "modules":[{"path":"arrow.notation","source":"infixr:60 \"→\"\n  html => lhs \" <b>→</b> \" rhs\n  latex => lhs \" \\Rightarrow \" rhs"}]
 }`;
 const result = JSON.parse(await exports.compilePreview(request));
 assert.equal(result.revision, 7);
@@ -34,16 +34,19 @@ assert.equal(result.status, "ok", JSON.stringify(result));
 assert.deepEqual(result.fragments.map(({ key }) => key), ["rule", "inline"]);
 assert.match(result.fragments[0].html, /border-top/);
 for (const { html } of result.fragments) assert.match(html, /<b>→<\/b>/);
+for (const { latex } of result.fragments) assert.equal(latex, undefined);
 
 const ignored = JSON.parse(await exports.compilePreview(
-  request.replace('"revision": 7,', '"revision": 7, "ignoreHtmlTemplates": true,'),
+  request.replace('"revision": 7,', '"revision": 7, "ignoreHtmlTemplates": true, "includeLatex": true,'),
 ));
 assert.equal(ignored.status, "ok", JSON.stringify(ignored));
 assert.deepEqual(ignored.fragments.map(({ key }) => key), ["rule", "inline"]);
-for (const { html } of ignored.fragments) {
+for (const { html, latex } of ignored.fragments) {
   assert.match(html, /→/);
   assert.doesNotMatch(html, /<b>/);
+  assert.match(latex, /\\Rightarrow/);
 }
+assert.match(ignored.fragments[0].latex, /\\begin\{mathpar\}/);
 
 const invalid = JSON.parse(await exports.compilePreview(request.replace("──── Base\\nA → B", "A → B")));
 assert.equal(invalid.status, "invalid", JSON.stringify(invalid));

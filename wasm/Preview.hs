@@ -13,8 +13,10 @@ import Data.Text.Lazy qualified as Lazy
 import Data.Text.Lazy.Encoding qualified as LazyEncoding
 import Inference.AST (Document (..), SourcePosition (..), SourceSpan (..))
 import Inference.HTML (HtmlTemplateMode (..), renderHtml, renderHtmlExpression, selectHtmlTemplates)
+import Inference.LaTeX (renderLatex, renderLatexExpression)
 import Inference.Modules (ModuleDiagnostic (..), NotationResolver, NotationSourceInput (..), loadNotationScope)
 import Inference.Parser (Diagnostic (..), parseBlockAttributes, parseBlockSection, parseInlineExpression)
+import Inference.Templates (templatesFor)
 import System.FilePath.Posix (isAbsolute, takeDirectory, (</>))
 
 data ItemKind = Notation | Block | Inline deriving (Eq)
@@ -47,7 +49,8 @@ data Request = Request
   { requestRevision :: Int,
     requestItems :: [Item],
     requestModules :: [Module],
-    ignoreHtmlTemplates :: Bool
+    ignoreHtmlTemplates :: Bool,
+    includeLatex :: Bool
   }
 
 instance FromJSON Request where
@@ -57,6 +60,7 @@ instance FromJSON Request where
       <*> request .: "items"
       <*> request .: "modules"
       <*> (request .:? "ignoreHtmlTemplates" .!= False)
+      <*> (request .:? "includeLatex" .!= False)
 
 compileJson :: Text -> Text
 compileJson input = Lazy.toStrict (LazyEncoding.decodeUtf8 (encode response))
@@ -93,6 +97,14 @@ compile request modules =
         first (moduleDiagnostic []) (runIdentity (loadNotationScope (resolveModule modules) declarations))
       let templateMode = if ignoreHtmlTemplates request then IgnoreHtmlTemplates else UseHtmlTemplates
           html = selectHtmlTemplates templateMode templates
+          latex = templatesFor "latex" templates
+          fragment item renderedHtml renderedLatex = do
+            markup <- renderedHtml
+            let latexFields =
+                  if includeLatex request
+                    then either (const []) (\source -> ["latex" .= source]) renderedLatex
+                    else []
+            pure [object (["key" .= itemKey item, "html" .= markup] <> latexFields)]
           renderItem item = case itemKind item of
             Notation -> Right []
             kind ->
@@ -100,8 +112,11 @@ compile request modules =
                     Block -> do
                       options <- parseBlockAttributes (itemPairs item)
                       section <- parseBlockSection notations options (itemSource item)
-                      renderHtml html (Document notations [section])
-                    _ -> parseInlineExpression notations (itemSource item) >>= renderHtmlExpression html notations
+                      let document = Document notations [section]
+                      fragment item (renderHtml html document) (renderLatex latex document)
+                    _ -> do
+                      expression <- parseInlineExpression notations (itemSource item)
+                      fragment item (renderHtmlExpression html notations expression) (renderLatexExpression latex notations expression)
                   report diagnostic =
                     diagnosticValue
                       (itemOrigin (itemKey item))
@@ -110,7 +125,7 @@ compile request modules =
                          in object ["message" .= ("Competing notation declared here." :: Text), "location" .= location (sourceOrigin source) (diagnosticSpan local)]
                       | span' <- diagnosticRelated diagnostic
                       ]
-               in first report ((\fragment -> [object ["key" .= itemKey item, "html" .= fragment]]) <$> rendered)
+               in first report rendered
       traverse renderItem items
 
 resolveModule :: Map.Map FilePath Text -> NotationResolver Identity

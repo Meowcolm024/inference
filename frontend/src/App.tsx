@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { Editor, type SelectionRequest } from "./Editor";
 import { loadDraft, saveDraft } from "./draft";
 import { usePreview } from "./preview/usePreview";
@@ -9,14 +9,36 @@ export default function App() {
   const [selection, setSelection] = useState<SelectionRequest>();
   const [mobilePane, setMobilePane] = useState<"source" | "preview">("source");
   const [fileError, setFileError] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
   const selectionId = useRef(0);
   const preview = usePreview(draft.source, draft.modules, draft.name);
+  const previewMarkup = useMemo(
+    () => ({ __html: preview.html }),
+    [preview.html],
+  );
 
   useEffect(() => {
     const timer = setTimeout(() => saveDraft(draft), 300);
     return () => clearTimeout(timer);
   }, [draft]);
+
+  useEffect(() => {
+    if (!copyStatus) return;
+    const timer = setTimeout(() => setCopyStatus(""), 2500);
+    return () => clearTimeout(timer);
+  }, [copyStatus]);
+
+  const copyLatex = async (key: string) => {
+    const latex = preview.latexByKey.get(key);
+    if (latex === undefined) return;
+    try {
+      await navigator.clipboard.writeText(latex);
+      setCopyStatus("LaTeX copied");
+    } catch {
+      setCopyStatus("Could not copy LaTeX");
+    }
+  };
 
   const reveal = (issue: Pick<PreviewIssue, "start" | "end">) => {
     setMobilePane("source");
@@ -147,6 +169,9 @@ export default function App() {
           />
         </section>
         <section className="preview-pane" aria-label="Rendered preview">
+          <div className="copy-status" aria-live="polite">
+            {copyStatus}
+          </div>
           {(preview.issues.length > 0 || preview.message) && (
             <aside
               className="diagnostics"
@@ -195,7 +220,22 @@ export default function App() {
               <article
                 className="rendered-document"
                 aria-label="Document preview"
+                onClick={(event) => {
+                  if (!(event.target instanceof Element)) return;
+                  const button = event.target.closest<HTMLButtonElement>(
+                    "button[data-copy-latex]",
+                  );
+                  const key = button?.dataset.copyLatex;
+                  if (key === undefined) return;
+                  event.preventDefault();
+                  void copyLatex(key);
+                }}
                 onDoubleClick={(event) => {
+                  if (
+                    event.target instanceof Element &&
+                    event.target.closest("button[data-copy-latex]")
+                  )
+                    return;
                   const target =
                     event.target instanceof Element
                       ? event.target.closest<HTMLElement>("[data-source-line]")
@@ -209,7 +249,7 @@ export default function App() {
                     .reduce((offset, text) => offset + text.length + 1, 0);
                   reveal({ start, end: start });
                 }}
-                dangerouslySetInnerHTML={{ __html: preview.html }}
+                dangerouslySetInnerHTML={previewMarkup}
               />
             )}
           </div>

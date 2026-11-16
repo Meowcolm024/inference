@@ -133,8 +133,39 @@ test("later notation edits update earlier expressions and rapid edits settle on 
     page.getByRole("heading", { name: "Latest revision" }),
   ).toBeVisible();
   await expect(page.getByRole("status")).toHaveText("Live");
-  await expect(page.locator(".inference-inline")).toHaveText("z");
+  await expect(page.locator(".inference-inline")).toContainText("z");
   await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("copy buttons use the LaTeX for the displayed preview", async ({
+  context,
+  page,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/");
+  await expect(page.getByRole("status")).toHaveText("Live");
+  const source =
+    "# Clipboard fixture\n\n`x`{.inference}\n\n```inference\n────\nx\n```";
+  await edit(page, source);
+  await expect(
+    page.getByRole("heading", { name: "Clipboard fixture" }),
+  ).toBeVisible();
+  const inlineCopy = page.locator(".inference-inline").getByRole("button", {
+    name: "Copy as LaTeX",
+  });
+  const blockCopy = page.locator(".inference-block").getByRole("button", {
+    name: "Copy as LaTeX",
+  });
+  const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
+  await inlineCopy.click();
+  await expect.poll(clipboard).toBe("x");
+  await expect(page.getByText("LaTeX copied", { exact: true })).toBeVisible();
+  await blockCopy.click();
+  await expect.poll(clipboard).toContain("\\begin{mathpar}");
+  await edit(page, source.replace("`x`", "`y`").replace("────\nx", "x"));
+  await expect(page.getByRole("alert")).toContainText("last valid preview");
+  await inlineCopy.click();
+  await expect.poll(clipboard).toBe("x");
 });
 
 test("narrow screens switch between source and preview without overflowing", async ({

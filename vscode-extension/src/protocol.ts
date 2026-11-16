@@ -16,6 +16,7 @@ export interface ModuleSource {
 export interface PreviewRequest {
   revision: number;
   ignoreHtmlTemplates: true;
+  includeLatex?: true;
   items: Item[];
   modules: ModuleSource[];
 }
@@ -34,11 +35,17 @@ export interface CompilerDiagnostic {
   location: SourceLocation | null;
   related: { message: string; location: SourceLocation }[];
 }
+export interface PreviewFragment {
+  key: string;
+  html: string;
+  latex?: string;
+}
+
 export type PreviewResponse =
   | {
       revision: number;
       status: "ok";
-      fragments: { key: string; html: string }[];
+      fragments: PreviewFragment[];
     }
   | { revision: number; status: "invalid"; diagnostics: CompilerDiagnostic[] }
   | { revision: number | null; status: "error"; message: string };

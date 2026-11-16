@@ -152,6 +152,20 @@ button svg {
 .preview-pane {
   background: #fff;
   container-type: inline-size;
+  position: relative;
+}
+.copy-status {
+  position: absolute;
+  z-index: 1;
+  inset: auto 16px 16px auto;
+  pointer-events: none;
+  font-size: 12px;
+}
+.copy-status:not(:empty) {
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: #263140;
+  color: #fff;
 }
 .preview-scroll {
   flex: 1;

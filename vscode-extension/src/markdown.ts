@@ -4,6 +4,7 @@ import type {
   Attributes,
   Item,
   MappedSource,
+  PreviewFragment,
   SourcePosition,
 } from "./protocol";
 
@@ -21,7 +22,10 @@ export interface MarkdownDocument {
   items: Item[];
   sources: Map<string, MappedSource>;
   diagnostics: AdapterDiagnostic[];
-  render(fragments: { key: string; html: string }[]): string;
+  render(
+    fragments: PreviewFragment[],
+    options?: { copyLatex: boolean },
+  ): string;
 }
 
 type ParsedAttributes = { attr: Attributes; end: number } | { error: string };
@@ -361,9 +365,9 @@ export function parseMarkdown(
     items,
     sources,
     diagnostics,
-    render(fragments) {
+    render(fragments, renderOptions) {
       const rendered = new Map(
-        fragments.map((fragment) => [fragment.key, fragment.html]),
+        fragments.map((fragment) => [fragment.key, fragment]),
       );
       for (const type of ["fence", "code_inline"] as const) {
         const fallback = fallbackRules[type];
@@ -371,16 +375,19 @@ export function parseMarkdown(
           const token = all[index];
           const meta = token.meta as InferenceMeta | null;
           if (meta?.kind === "notation") return "";
-          const html = meta?.key ? rendered.get(meta.key) : undefined;
-          if (html === undefined)
-            return fallback(all, index, options, env, self);
+          const fragment = meta?.key ? rendered.get(meta.key) : undefined;
+          if (!fragment) return fallback(all, index, options, env, self);
           const tag = type === "fence" ? "div" : "span";
           const id = meta?.attr?.id ? ` id="${escapeHtml(meta.attr.id)}"` : "";
           const classes =
             meta?.attr?.classes
               .filter((name) => name !== "inference")
               .join(" ") ?? "";
-          return `<${tag}${id} class="inference-${type === "fence" ? "block" : "inline"} ${escapeHtml(classes)}" data-source-line="${meta?.line ?? 0}">${html}</${tag}>`;
+          const copy =
+            renderOptions?.copyLatex && fragment.latex !== undefined
+              ? `<button type="button" class="copy-latex" data-copy-latex="${escapeHtml(fragment.key)}">Copy as LaTeX</button>`
+              : "";
+          return `<${tag}${id} class="inference-${type === "fence" ? "block" : "inline"} ${escapeHtml(classes)}" data-source-line="${meta?.line ?? 0}">${fragment.html}${copy}</${tag}>`;
         };
       }
       return md.renderer.render(tokens, md.options, {});

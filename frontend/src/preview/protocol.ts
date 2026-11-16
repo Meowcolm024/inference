@@ -21,8 +21,13 @@ export interface PreviewIssue {
   module?: string;
 }
 
+export interface PreviewContent {
+  html: string;
+  latexByKey: Map<string, string>;
+}
+
 export type BrowserResponse =
-  | { revision: number; status: "ok"; html: string; elapsed: number }
+  | ({ revision: number; status: "ok"; elapsed: number } & PreviewContent)
   | {
       revision: number;
       status: "invalid";

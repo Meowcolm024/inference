@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { PreviewClient } from "./client";
-import type { ModuleSource, PreviewIssue } from "./protocol";
+import type { ModuleSource, PreviewContent, PreviewIssue } from "./protocol";
 
-export interface PreviewState {
+export interface PreviewState extends PreviewContent {
   status: "loading" | "ok" | "invalid" | "error";
-  html: string;
   issues: PreviewIssue[];
   message: string;
   stale: boolean;
 }
+
+const emptyContent: PreviewContent = { html: "", latexByKey: new Map() };
 
 export function usePreview(
   source: string,
@@ -17,14 +18,14 @@ export function usePreview(
 ): PreviewState {
   const [state, setState] = useState<PreviewState>({
     status: "loading",
-    html: "",
+    ...emptyContent,
     issues: [],
     message: "",
     stale: false,
   });
   const client = useRef<PreviewClient | null>(null);
   const revision = useRef(0);
-  const lastGood = useRef("");
+  const lastGood = useRef<PreviewContent | null>(null);
   const previousDocument = useRef(documentId);
 
   useEffect(() => {
@@ -39,11 +40,11 @@ export function usePreview(
     const current = ++revision.current;
     const changedDocument = documentId !== previousDocument.current;
     previousDocument.current = documentId;
-    if (changedDocument) lastGood.current = "";
+    if (changedDocument) lastGood.current = null;
     setState((previous) => ({
       ...previous,
       status: "loading",
-      html: changedDocument ? "" : previous.html,
+      ...(changedDocument ? emptyContent : {}),
       issues: [],
       message: "",
     }));
@@ -53,10 +54,14 @@ export function usePreview(
         .then((response) => {
           if (!response || current !== revision.current) return;
           if (response.status === "ok") {
-            lastGood.current = response.html;
+            const content = {
+              html: response.html,
+              latexByKey: response.latexByKey,
+            };
+            lastGood.current = content.html ? content : null;
             setState({
               status: "ok",
-              html: response.html,
+              ...content,
               issues: [],
               message: "",
               stale: false,
@@ -64,7 +69,7 @@ export function usePreview(
           } else if (response.status === "invalid") {
             setState({
               status: "invalid",
-              html: lastGood.current || response.html,
+              ...(lastGood.current ?? { ...emptyContent, html: response.html }),
               issues: response.issues,
               message: "",
               stale: Boolean(lastGood.current),
@@ -72,7 +77,7 @@ export function usePreview(
           } else {
             setState({
               status: "error",
-              html: lastGood.current,
+              ...(lastGood.current ?? emptyContent),
               issues: [],
               message: response.message,
               stale: Boolean(lastGood.current),
@@ -83,7 +88,7 @@ export function usePreview(
           if (current === revision.current)
             setState({
               status: "error",
-              html: lastGood.current,
+              ...(lastGood.current ?? emptyContent),
               issues: [],
               message: String(error),
               stale: Boolean(lastGood.current),

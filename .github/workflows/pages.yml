@@ -23,10 +23,6 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - uses: haskell-actions/setup@v2
-        with:
-          enable-stack: true
-          stack-no-global: true
       - uses: cachix/install-nix-action@v31
 
       - name: Install frontend dependencies
@@ -34,10 +30,7 @@ jobs:
         run: npm ci
 
       - name: Build the WebAssembly compiler
-        run: |
-          # Stack generates the Cabal file used by the Wasm project.
-          stack --no-nix build
-          node vscode-extension/scripts/build-wasm.mjs
+        run: node vscode-extension/scripts/build-wasm.mjs
 
       - name: Build the web demo
         working-directory: frontend

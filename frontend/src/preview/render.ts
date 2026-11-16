@@ -84,11 +84,13 @@ export async function renderPreview(
       revision: input.revision,
       status: "ok",
       html: parsed.render([]),
+      latexByKey: new Map(),
       elapsed: performance.now() - started,
     };
   const result = await compile({
     revision: input.revision,
     ignoreHtmlTemplates: true,
+    includeLatex: true,
     items: parsed.items,
     modules: input.modules,
   });
@@ -111,10 +113,15 @@ export async function renderPreview(
       ]),
     };
   }
+  const latexByKey = new Map<string, string>();
+  for (const { key, latex } of result.fragments) {
+    if (latex !== undefined) latexByKey.set(key, latex);
+  }
   return {
     revision: input.revision,
     status: "ok",
-    html: parsed.render(result.fragments),
+    html: parsed.render(result.fragments, { copyLatex: true }),
+    latexByKey,
     elapsed: performance.now() - started,
   };
 }
