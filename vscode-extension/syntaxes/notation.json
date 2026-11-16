@@ -1,0 +1,22 @@
+{
+  "scopeName": "source.inference-notation",
+  "patterns": [
+    {
+      "name": "keyword.control.inference",
+      "match": "\\b(import|notation|infixl|infixr|infix|atom)\\b"
+    },
+    {
+      "name": "string.quoted.double.inference",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.inference",
+          "match": "\\\\[\\\\\"]"
+        }
+      ]
+    },
+    { "name": "constant.numeric.inference", "match": "\\b[0-9]+\\b" },
+    { "name": "keyword.operator.inference", "match": "=>|:" }
+  ]
+}

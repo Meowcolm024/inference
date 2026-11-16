@@ -1,0 +1,23 @@
+{
+  "Inference rule": {
+    "prefix": "inference-rule",
+    "body": [
+      "```{.inference}",
+      "${1:premise}",
+      "──────────────────── ${2:Rule}",
+      "${3:conclusion}",
+      "```"
+    ],
+    "description": "Unicode inference rule"
+  },
+  "Notation block": {
+    "prefix": "inference-notation",
+    "body": ["```{.inference-notation}", "${1:infixr:60 \"→\"}", "```"],
+    "description": "Document-wide notation declarations"
+  },
+  "Display expression": {
+    "prefix": "inference-expr",
+    "body": ["```{.inference kind=expr}", "${1:A → B}", "```"],
+    "description": "Display one inference expression"
+  }
+}

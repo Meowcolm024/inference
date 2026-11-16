@@ -1,0 +1,13 @@
+cabal-version: 3.0
+name: inference-wasm
+version: 0.1.0.0
+license: BSD-3-Clause
+build-type: Simple
+
+executable inference-wasm
+  main-is: Wasm.hs
+  other-modules: Preview
+  default-language: GHC2021
+  default-extensions: LambdaCase, OverloadedStrings
+  ghc-options: -Wall -no-hs-main -optl-mexec-model=reactor -optl-Wl,--export=compilePreview
+  build-depends: aeson, base, containers, filepath, ghc-experimental, inference, text

@@ -1,4 +1,15 @@
 .stack-work/
 *~
+dist-newstyle/
 .DS_Store
 .vscode/
+node_modules/
+vscode-extension/dist/
+vscode-extension/artifacts/
+vscode-extension/*.vsix
+vscode-extension/.vscode-test/
+!vscode-extension/.vscode/
+frontend/dist/
+frontend/public/wasm/
+frontend/test-results/
+frontend/playwright-report/
