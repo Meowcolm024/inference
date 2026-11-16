@@ -137,7 +137,7 @@ test("later notation edits update earlier expressions and rapid edits settle on 
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
-test("copy buttons use the LaTeX for the displayed preview", async ({
+test("only fenced inference blocks offer LaTeX copying", async ({
   context,
   page,
 }) => {
@@ -157,15 +157,16 @@ test("copy buttons use the LaTeX for the displayed preview", async ({
     name: "Copy as LaTeX",
   });
   const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
-  await inlineCopy.click();
-  await expect.poll(clipboard).toBe("x");
-  await expect(page.getByText("LaTeX copied", { exact: true })).toBeVisible();
+  await expect(inlineCopy).toHaveCount(0);
   await blockCopy.click();
   await expect.poll(clipboard).toContain("\\begin{mathpar}");
+  await expect(page.getByText("LaTeX copied", { exact: true })).toBeVisible();
+  const blockLatex = await clipboard();
   await edit(page, source.replace("`x`", "`y`").replace("────\nx", "x"));
   await expect(page.getByRole("alert")).toContainText("last valid preview");
-  await inlineCopy.click();
-  await expect.poll(clipboard).toBe("x");
+  await page.evaluate(() => navigator.clipboard.writeText(""));
+  await blockCopy.click();
+  await expect.poll(clipboard).toBe(blockLatex);
 });
 
 test("narrow screens switch between source and preview without overflowing", async ({

@@ -42,7 +42,7 @@ test("math delimiters stay literal inside code and HTML stays inert", async () =
 
 test("inference and KaTeX share the Markdown tree and templates are disabled", async () => {
   const source =
-    '$x$ and `A → B`{.inference}\n\n```inference-notation\nimport "types.notation"\n```';
+    '$x$ and `A → B`{.inference}\n\n```inference\n────\nA → B\n```\n\n```inference-notation\nimport "types.notation"\n```';
   const modules = [{ path: "types.notation", source: 'infixr:60 "→"' }];
   const latex = String.raw`A \to B`;
   const result = await renderPreview(
@@ -53,13 +53,14 @@ test("inference and KaTeX share the Markdown tree and templates are disabled", a
       assert.deepEqual(request.modules, modules);
       assert.deepEqual(
         request.items.map((item) => item.kind),
-        ["inline", "notation"],
+        ["inline", "block", "notation"],
       );
       return {
         revision: request.revision,
         status: "ok",
         fragments: [
           { key: request.items[0].key, html: "<span>A → B</span>", latex },
+          { key: request.items[1].key, html: "<div>A → B</div>", latex },
         ],
       };
     },
@@ -68,8 +69,9 @@ test("inference and KaTeX share the Markdown tree and templates are disabled", a
   if (result.status !== "ok") return;
   assert.match(result.html, /class="katex"/);
   assert.match(result.html, /<span>A → B<\/span>/);
-  assert.match(result.html, /data-copy-latex="item-0"/);
-  assert.equal(result.latexByKey.get("item-0"), latex);
+  assert.doesNotMatch(result.html, /data-copy-latex="item-0"/);
+  assert.match(result.html, /data-copy-latex="item-1"/);
+  assert.equal(result.latexByKey.get("item-1"), latex);
   assert.equal(result.html.includes(latex), false);
   assert.doesNotMatch(result.html, /import &quot;/);
 });

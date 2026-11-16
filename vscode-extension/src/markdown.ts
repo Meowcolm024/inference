@@ -384,7 +384,9 @@ export function parseMarkdown(
               .filter((name) => name !== "inference")
               .join(" ") ?? "";
           const copy =
-            renderOptions?.copyLatex && fragment.latex !== undefined
+            type === "fence" &&
+            renderOptions?.copyLatex &&
+            fragment.latex !== undefined
               ? `<button type="button" class="copy-latex" data-copy-latex="${escapeHtml(fragment.key)}">Copy as LaTeX</button>`
               : "";
           return `<${tag}${id} class="inference-${type === "fence" ? "block" : "inline"} ${escapeHtml(classes)}" data-source-line="${meta?.line ?? 0}">${fragment.html}${copy}</${tag}>`;
